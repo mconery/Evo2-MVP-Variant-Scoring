@@ -66,7 +66,7 @@ def write_chunks(chrom, variant_list, max_variants_per_file, output_dir):
         chunk_vars = variant_list[start_idx:start_idx+max_variants_per_file]
         start_pos = chunk_vars[0][1]
         end_pos = chunk_vars[-1][1]
-        filename = f"chr{chrom}.{start_pos}.{end_pos}.topmed_freeze8_variants.txt.gz"
+        filename = f"{chrom}.{start_pos}.{end_pos}.topmed_freeze8_variants.txt.gz"
         filepath = os.path.join(output_dir, filename)
         with gzip.open(filepath, 'wt') as out:
             out.write("chromosome\tposition\tref_allele\talt_allele\n")
