@@ -44,7 +44,6 @@ def init_model(model_name: str = "evo2_40b", use_fp8: bool = True):
 
     logging.info("Loading Evo2 %s in %s precision …", model_name, precision.upper())
     model = Evo2(model_name,
-                 dtype=("fp8" if fp8_ok else "bf16"),
                  device_map="auto",         # HuggingFace accelerate style sharding
                  max_memory={i: "0.95GiB" for i in range(torch.cuda.device_count())},
                  offload_folder="offload"   # NVMe offload safety net
@@ -140,7 +139,7 @@ def main():
         "alt_allele": "alt"
     })
 
-    logging.info("Scoring %,d variants with %d process(es)…", len(df), args.processes)
+    logging.info(f"Scoring {len(df):,d} variants with {args.processes} process(es)…")
     fasta_path = Path(args.fasta).expanduser()
     if not Path(args.fasta + '.fai').expanduser().exists():
         sys.exit("FASTA not indexed – run: samtools faidx <fasta>")
