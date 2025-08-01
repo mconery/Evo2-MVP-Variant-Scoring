@@ -48,7 +48,6 @@ def init_model(model_name: str = "evo2_40b", use_fp8: bool = True):
                  model_name, precision.upper(), current_device)
     
     model = Evo2(model_name)
-    model.eval()
     return model
 
 # ------------------------------------------------------------------------------
