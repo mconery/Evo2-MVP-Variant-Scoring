@@ -44,7 +44,7 @@ def init_model(model_name: str = "evo2_40b", use_fp8: bool = True):
     precision = "fp8" if fp8_ok else "bf16"
     
     current_device = torch.cuda.current_device()
-    logging.info("Loading Evo2 %s in %s precision on GPU %d…", 
+    logging.info("Loading Evo2 %s in %s precision on GPU %d…",
                  model_name, precision.upper(), current_device)
     
     model = Evo2(model_name)
@@ -108,6 +108,30 @@ def _init_worker(fasta_path, model_name, fp8, gpu_id):
 def _worker_task(row_json, ctx):
     row = json.loads(row_json)
     return score_variant(_worker_model, _worker_tok, _worker_fa, row, ctx)
+
+# ------------------------------------------------------------------------------
+# Chunk processing function - MOVED OUTSIDE OF main() TO BE PICKLEABLE
+# ------------------------------------------------------------------------------
+
+def process_chunk(chunk_data):
+    """
+    Process a chunk of variants on a specific GPU.
+    This function must be at module level to be pickleable.
+    """
+    chunk_rows, gpu_id, start_offset, fasta_path, model_name, fp8, ctx = chunk_data
+    
+    # Initialize worker for this specific GPU
+    _init_worker(fasta_path, model_name, fp8, gpu_id)
+    
+    chunk_scores = []
+    for i, row_json in enumerate(chunk_rows):
+        score = _worker_task(row_json, ctx)
+        chunk_scores.append(score)
+        
+        if (start_offset + i + 1) % 100 == 0:
+            logging.info(f"GPU {gpu_id}: processed {start_offset + i + 1} variants")
+    
+    return start_offset, chunk_scores
 
 # ------------------------------------------------------------------------------
 # Main
@@ -176,27 +200,20 @@ def main():
         end_idx = min((i + 1) * chunk_size, len(rows_json))
         if start_idx < len(rows_json):
             gpu_id = i % num_gpus  # Cycle through available GPUs
-            chunks.append((rows_json[start_idx:end_idx], gpu_id, start_idx))
+            # Pack all necessary data for the worker
+            chunk_data = (
+                rows_json[start_idx:end_idx],  # chunk_rows
+                gpu_id,                        # gpu_id
+                start_idx,                     # start_offset
+                str(fasta_path),              # fasta_path
+                args.model,                   # model_name
+                not args.no_fp8,             # fp8
+                args.ctx                      # ctx
+            )
+            chunks.append(chunk_data)
 
     scores = np.empty(len(df), dtype=np.float32)
     completed = 0
-
-    # Process each chunk on its assigned GPU
-    def process_chunk(chunk_data):
-        chunk_rows, gpu_id, start_offset = chunk_data
-        
-        # Initialize worker for this specific GPU
-        _init_worker(str(fasta_path), args.model, not args.no_fp8, gpu_id)
-        
-        chunk_scores = []
-        for i, row_json in enumerate(chunk_rows):
-            score = _worker_task(row_json, args.ctx)
-            chunk_scores.append(score)
-            
-            if (start_offset + i + 1) % 100 == 0:
-                logging.info(f"GPU {gpu_id}: processed {start_offset + i + 1} variants")
-        
-        return start_offset, chunk_scores
 
     # Use ProcessPoolExecutor with spawn method to avoid CUDA context issues
     mp_context = mp.get_context('spawn')
