@@ -71,7 +71,7 @@ def make_alt_seq(ref_seq: str, pos: int, ref: str, alt: str, slice_start: int):
 
 @torch.no_grad()
 def ll_score(model, tokenizer, seq: str):
-    device = next(model.parameters()).device  # Get model's device
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
     toks = torch.tensor(tokenizer(seq), dtype=torch.int16, device=device)[None, :]
     out, _ = model(toks)
     logp = torch.log_softmax(out, -1)
