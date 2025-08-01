@@ -128,8 +128,17 @@ def main():
                         datefmt="%H:%M:%S")
 
     df = pd.read_csv(args.variants, sep="\t" if args.variants.endswith(".txt") else ",")
-    for col in ("chr", "pos", "ref", "alt"):
-        if col not in df.columns: sys.exit(f"Missing column '{col}' in {args.variants}")
+    for col in ("chromosome", "position", "ref_allele", "alt_allele"):
+        if col not in df.columns:
+            sys.exit(f"Missing column '{col}' in {args.variants}")
+    
+    #Map column names
+    df = df.rename(columns={
+        "chromosome": "chr",
+        "position": "pos",
+        "ref_allele": "ref",
+        "alt_allele": "alt"
+    })
 
     logging.info("Scoring %,d variants with %d process(es)…", len(df), args.processes)
     fasta_path = Path(args.fasta).expanduser()
