@@ -78,8 +78,8 @@ def ll_score(model, tokenizer, seq: str):
     return logp.mean().item()
 
 def score_variant(model, tokenizer, fasta: Fasta, row, ctx: int):
-    ref_seq, slice_start = extract_context(fasta, row.chr, row.pos, ctx)
-    alt_seq = make_alt_seq(ref_seq, row.pos, row.ref, row.alt, slice_start)
+    ref_seq, slice_start = extract_context(fasta, row["chr"], row["pos"], ctx)
+    alt_seq = make_alt_seq(ref_seq, row["pos"], row["ref"], row["alt"], slice_start)
     ref_s = ll_score(model, tokenizer, ref_seq)
     alt_s = ll_score(model, tokenizer, alt_seq)
     return alt_s - ref_s
