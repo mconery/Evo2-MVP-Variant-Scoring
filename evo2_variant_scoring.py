@@ -142,7 +142,7 @@ def main():
 
     logging.info("Scoring %,d variants with %d process(es)…", len(df), args.processes)
     fasta_path = Path(args.fasta).expanduser()
-    if not fasta_path.with_suffix(".fai").exists():
+    if not Path(args.fasta + '.fai').expanduser().exists():
         sys.exit("FASTA not indexed – run: samtools faidx <fasta>")
 
     # Serialise rows into compact strings (pickling large DataFrames costs RAM)
