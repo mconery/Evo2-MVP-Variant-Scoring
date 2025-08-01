@@ -43,12 +43,7 @@ def init_model(model_name: str = "evo2_40b", use_fp8: bool = True):
     precision = "fp8" if fp8_ok else "bf16"
 
     logging.info("Loading Evo2 %s in %s precision …", model_name, precision.upper())
-    model = Evo2(model_name,
-                 device_map="auto",         # HuggingFace accelerate style sharding
-                 max_memory={i: "0.95GiB" for i in range(torch.cuda.device_count())},
-                 offload_folder="offload"   # NVMe offload safety net
-                 )
-    model.eval()
+    model = Evo2(model_name)
     return model
 
 
