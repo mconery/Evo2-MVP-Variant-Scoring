@@ -127,7 +127,7 @@ def main():
                         format="%(asctime)s %(levelname)s: %(message)s",
                         datefmt="%H:%M:%S")
 
-    df = pd.read_csv(args.variants, sep="\t" if args.variants.endswith(".txt") else ",")
+    df = pd.read_csv(args.variants, sep="\t")
     for col in ("chromosome", "position", "ref_allele", "alt_allele"):
         if col not in df.columns:
             sys.exit(f"Missing column '{col}' in {args.variants}")
