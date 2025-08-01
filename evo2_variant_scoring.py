@@ -1,239 +1,194 @@
 #!/usr/bin/env python3
 """
-Evo2 40 B Variant-Scoring Pipeline
+Evo2 40 B Variant-Scoring Pipeline (Single Process Version)
 Author: Arc Institute / NVIDIA Blackwell reference implementation
 --------------------------------------------------------------------------------
-Scores ~2 M variants with 1-Mb context windows using Evo2_40b on multi-GPU
-systems (B200, H100, HGX, GB200). FP8 mixed precision is used automatically
-whenever Blackwell GPUs are detected.
+Single-threaded version for debugging CUDA memory issues
 """
 
-import argparse, logging, os, sys, math, time, json
+import argparse, logging, os, sys, time
 from pathlib import Path
-from concurrent.futures import ProcessPoolExecutor, as_completed
-import multiprocessing as mp
-
 import torch
 import numpy as np
 import pandas as pd
 from pyfaidx import Fasta
 
-# ------------------------------------------------------------------------------
-# Model initialisation
-# ------------------------------------------------------------------------------
+# Set environment variables for better CUDA error reporting
+os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+os.environ['TORCH_USE_CUDA_DSA'] = '1'
 
-def init_model(model_name: str = "evo2_40b", use_fp8: bool = True):
-    """
-    Loads the Evo2 40 B model and places it on the assigned CUDA device.
-    On Blackwell GPUs FP8 mixed precision is enabled automatically.
-    """
-    from evo2 import Evo2  # Lazy-import to avoid torch-cuda init in forked workers
+def init_model(model_name: str = "evo2_40b"):
+    """Load Evo2 model on single GPU"""
+    from evo2 import Evo2
     
     if torch.cuda.device_count() == 0:
-        sys.exit("✗ No CUDA devices found – a Blackwell/Hopper GPU is required.")
+        sys.exit("✗ No CUDA devices found")
     
-    logging.info("Detected %d GPU(s): %s",
-                 torch.cuda.device_count(),
-                 ", ".join(torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count()))
-                 )
-    
-    # FP8 only if hardware supports it (B200, H200, GB200, H100)
-    fp8_ok = use_fp8 and any("B200" in torch.cuda.get_device_name(i) or
-                             "H100" in torch.cuda.get_device_name(i)
-                             for i in range(torch.cuda.device_count()))
-    precision = "fp8" if fp8_ok else "bf16"
-    
-    current_device = torch.cuda.current_device()
-    logging.info("Loading Evo2 %s in %s precision on GPU %d…",
-                 model_name, precision.upper(), current_device)
+    logging.info(f"Loading {model_name} on GPU 0...")
+    torch.cuda.empty_cache()
     
     model = Evo2(model_name)
+    
+    # Log memory usage
+    if torch.cuda.is_available():
+        allocated = torch.cuda.memory_allocated() / 1e9
+        reserved = torch.cuda.memory_reserved() / 1e9
+        logging.info(f"GPU memory: {allocated:.1f}GB allocated, {reserved:.1f}GB reserved")
+    
     return model
 
-# ------------------------------------------------------------------------------
-# Variant-specific helpers
-# ------------------------------------------------------------------------------
-
-CTX = 1_000_000  # 1 Mb window (can be overridden via CLI)
+CTX = 1_000_000
 
 def extract_context(fasta: Fasta, chrom: str, pos: int, ctx: int = CTX):
     half = ctx // 2
     start = max(1, pos - half)
     end = pos + half
     seq = fasta[chrom][start-1:end].seq.upper()
-    return seq, start  # return genomic start of slice
+    return seq, start
 
 def make_alt_seq(ref_seq: str, pos: int, ref: str, alt: str, slice_start: int):
     rel = pos - slice_start
     if ref_seq[rel: rel + len(ref)] != ref:
-        logging.warning("Reference mismatch at %d (%s→%s)", pos, ref, alt)
+        logging.warning(f"Reference mismatch at {pos} ({ref}→{alt})")
     return ref_seq[:rel] + alt + ref_seq[rel + len(ref):]
 
 @torch.no_grad()
 def ll_score(model, tokenizer, seq: str):
-    device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    # Change dtype from torch.int16 to torch.long for embedding compatibility
-    toks = torch.tensor(tokenizer(seq), dtype=torch.long, device=device)[None, :]
-    out, _ = model(toks)
-    logp = torch.log_softmax(out, -1)
-    return logp.mean().item()
+    """Score a sequence with extensive error handling"""
+    device = "cuda:0"
+    
+    # Limit sequence length
+    MAX_LEN = 500_000  # Start with shorter sequences
+    if len(seq) > MAX_LEN:
+        logging.warning(f"Truncating sequence from {len(seq)} to {MAX_LEN}")
+        seq = seq[:MAX_LEN]
+    
+    try:
+        # Tokenize
+        tokens = tokenizer(seq)
+        if len(tokens) > MAX_LEN:
+            tokens = tokens[:MAX_LEN]
+            
+        toks = torch.tensor(tokens, dtype=torch.long, device=device)[None, :]
+        
+        logging.debug(f"Processing sequence: {len(seq)} bp, {toks.size(1)} tokens")
+        
+        # Forward pass
+        out, _ = model(toks)
+        logp = torch.log_softmax(out, -1)
+        score = logp.mean().item()
+        
+        logging.debug(f"Score computed: {score}")
+        return score
+        
+    except Exception as e:
+        logging.error(f"Error in ll_score: {e}")
+        torch.cuda.empty_cache()
+        return float('nan')
 
 def score_variant(model, tokenizer, fasta: Fasta, row, ctx: int):
-    ref_seq, slice_start = extract_context(fasta, row["chr"], row["pos"], ctx)
-    alt_seq = make_alt_seq(ref_seq, row["pos"], row["ref"], row["alt"], slice_start)
-    ref_s = ll_score(model, tokenizer, ref_seq)
-    alt_s = ll_score(model, tokenizer, alt_seq)
-    return alt_s - ref_s
-
-# ------------------------------------------------------------------------------
-# Worker – each process holds *one* copy of the model on *one* assigned GPU
-# ------------------------------------------------------------------------------
-
-_worker_model = None
-_worker_tok = None
-_worker_fa = None
-
-def _init_worker(fasta_path, model_name, fp8, gpu_id):
-    global _worker_model, _worker_tok, _worker_fa
-    
-    # Set the specific GPU for this worker process
-    os.environ['CUDA_VISIBLE_DEVICES'] = str(gpu_id)
-    torch.cuda.set_device(0)  # After setting CUDA_VISIBLE_DEVICES, use device 0
-    
-    logging.getLogger().setLevel(logging.ERROR)  # silence sub-process spam
-    _worker_model = init_model(model_name, fp8)
-    _worker_tok = _worker_model.tokenizer.tokenize
-    _worker_fa = Fasta(fasta_path, rebuild=False)
-
-def _worker_task(row_json, ctx):
-    row = json.loads(row_json)
-    return score_variant(_worker_model, _worker_tok, _worker_fa, row, ctx)
-
-# ------------------------------------------------------------------------------
-# Chunk processing function - MOVED OUTSIDE OF main() TO BE PICKLEABLE
-# ------------------------------------------------------------------------------
-
-def process_chunk(chunk_data):
-    """
-    Process a chunk of variants on a specific GPU.
-    This function must be at module level to be pickleable.
-    """
-    chunk_rows, gpu_id, start_offset, fasta_path, model_name, fp8, ctx = chunk_data
-    
-    # Initialize worker for this specific GPU
-    _init_worker(fasta_path, model_name, fp8, gpu_id)
-    
-    chunk_scores = []
-    for i, row_json in enumerate(chunk_rows):
-        score = _worker_task(row_json, ctx)
-        chunk_scores.append(score)
+    """Score a single variant"""
+    try:
+        chrom = row["chr"]
+        pos = row["pos"]
+        ref = row["ref"]
+        alt = row["alt"]
         
-        if (start_offset + i + 1) % 100 == 0:
-            logging.info(f"GPU {gpu_id}: processed {start_offset + i + 1} variants")
-    
-    return start_offset, chunk_scores
-
-# ------------------------------------------------------------------------------
-# Main
-# ------------------------------------------------------------------------------
+        logging.debug(f"Scoring {chrom}:{pos} {ref}>{alt}")
+        
+        # Extract sequences
+        ref_seq, slice_start = extract_context(fasta, chrom, pos, ctx)
+        alt_seq = make_alt_seq(ref_seq, pos, ref, alt, slice_start)
+        
+        # Score both sequences
+        ref_score = ll_score(model, tokenizer, ref_seq)
+        if np.isnan(ref_score):
+            return float('nan')
+            
+        alt_score = ll_score(model, tokenizer, alt_seq)
+        if np.isnan(alt_score):
+            return float('nan')
+        
+        delta = alt_score - ref_score
+        logging.debug(f"Variant {chrom}:{pos}: ref={ref_score:.6f}, alt={alt_score:.6f}, delta={delta:.6f}")
+        
+        return delta
+        
+    except Exception as e:
+        logging.error(f"Error scoring variant {row}: {e}")
+        return float('nan')
 
 def main():
-    p = argparse.ArgumentParser("Evo2 40 B Variant Scorer")
-    p.add_argument("--variants", required=True, help="TSV/CSV with chromosome, position, ref_allele, alt_allele")
-    p.add_argument("--fasta", required=True, help="Reference genome FASTA (indexed)")
-    p.add_argument("--out", required=True, help="Output TSV with evo2_score")
-    p.add_argument("--ctx", type=int, default=CTX, help="Context bp (default: 1 000 000)")
-    p.add_argument("--processes", type=int, default=None, help="Number of processes (defaults to number of GPUs)")
-    p.add_argument("--model", default="evo2_40b")
-    p.add_argument("--no-fp8", action="store_true", help="Force BF16 even on B200/H100")
-    args = p.parse_args()
-
-    logging.basicConfig(level=logging.INFO,
-                        format="%(asctime)s %(levelname)s: %(message)s",
-                        datefmt="%H:%M:%S")
-
-    # Determine number of GPUs and set processes accordingly
-    num_gpus = torch.cuda.device_count()
-    if num_gpus == 0:
-        sys.exit("✗ No CUDA devices found – GPU required for Evo2 40B")
+    parser = argparse.ArgumentParser("Evo2 40B Single-Process Variant Scorer")
+    parser.add_argument("--variants", required=True, help="Variant TSV file")
+    parser.add_argument("--fasta", required=True, help="Reference FASTA file")
+    parser.add_argument("--out", required=True, help="Output file")
+    parser.add_argument("--ctx", type=int, default=500_000, help="Context size (default: 500K)")
+    parser.add_argument("--model", default="evo2_40b", help="Model name")
+    parser.add_argument("--test", type=int, default=5, help="Test with N variants")
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     
-    if args.processes is None:
-        args.processes = num_gpus
-        logging.info(f"Auto-detected {num_gpus} GPUs, setting processes to {args.processes}")
-    elif args.processes > num_gpus:
-        logging.warning(f"Requested {args.processes} processes but only {num_gpus} GPUs available. "
-                       f"Limiting to {num_gpus} processes.")
-        args.processes = num_gpus
-
+    args = parser.parse_args()
+    
+    # Setup logging
+    log_level = logging.DEBUG if args.debug else logging.INFO
+    logging.basicConfig(
+        level=log_level,
+        format="%(asctime)s %(levelname)s: %(message)s",
+        datefmt="%H:%M:%S"
+    )
+    
+    # Load data
     df = pd.read_csv(args.variants, sep="\t")
-    for col in ("chromosome", "position", "ref_allele", "alt_allele"):
+    required_cols = ["chromosome", "position", "ref_allele", "alt_allele"]
+    for col in required_cols:
         if col not in df.columns:
-            sys.exit(f"Missing column '{col}' in {args.variants}")
-
-    # Map column names
+            sys.exit(f"Missing column: {col}")
+    
+    # Rename columns
     df = df.rename(columns={
         "chromosome": "chr",
-        "position": "pos",
+        "position": "pos", 
         "ref_allele": "ref",
         "alt_allele": "alt"
     })
-
-    logging.info(f"Scoring {len(df):,d} variants with {args.processes} process(es) on {num_gpus} GPU(s)…")
     
-    fasta_path = Path(args.fasta).expanduser()
+    # Test mode
+    if args.test:
+        df = df.head(args.test)
+        logging.info(f"Test mode: processing {len(df)} variants")
+    
+    # Check FASTA
+    fasta_path = Path(args.fasta)
     if not Path(str(fasta_path) + '.fai').exists():
-        sys.exit(f"FASTA not indexed – run: samtools faidx {fasta_path}")
-
-    # Split variants among processes to balance load
-    chunk_size = len(df) // args.processes
-    if len(df) % args.processes != 0:
-        chunk_size += 1
-
-    # Serialise rows into compact strings (pickling large DataFrames costs RAM)
-    rows_json = df.to_dict(orient="records")
-    rows_json = [json.dumps(r) for r in rows_json]
-
-    # Create chunks for each GPU/process
-    chunks = []
-    for i in range(args.processes):
-        start_idx = i * chunk_size
-        end_idx = min((i + 1) * chunk_size, len(rows_json))
-        if start_idx < len(rows_json):
-            gpu_id = i % num_gpus  # Cycle through available GPUs
-            # Pack all necessary data for the worker
-            chunk_data = (
-                rows_json[start_idx:end_idx],  # chunk_rows
-                gpu_id,                        # gpu_id
-                start_idx,                     # start_offset
-                str(fasta_path),              # fasta_path
-                args.model,                   # model_name
-                not args.no_fp8,             # fp8
-                args.ctx                      # ctx
-            )
-            chunks.append(chunk_data)
-
-    scores = np.empty(len(df), dtype=np.float32)
-    completed = 0
-
-    # Use ProcessPoolExecutor with spawn method to avoid CUDA context issues
-    mp_context = mp.get_context('spawn')
+        sys.exit(f"FASTA not indexed: {fasta_path}")
     
-    with ProcessPoolExecutor(max_workers=args.processes, mp_context=mp_context) as executor:
-        futures = {executor.submit(process_chunk, chunk): chunk for chunk in chunks}
+    # Initialize model and FASTA
+    logging.info("Initializing model...")
+    model = init_model(args.model)
+    tokenizer = model.tokenizer.tokenize
+    fasta = Fasta(str(fasta_path))
+    
+    logging.info(f"Processing {len(df)} variants...")
+    
+    # Process variants one by one
+    scores = []
+    for i, (_, row) in enumerate(df.iterrows()):
+        logging.info(f"Processing variant {i+1}/{len(df)}: {row['chr']}:{row['pos']}")
         
-        for future in as_completed(futures):
-            start_offset, chunk_scores = future.result()
-            
-            # Place scores in correct positions
-            for i, score in enumerate(chunk_scores):
-                scores[start_offset + i] = score
-            
-            completed += len(chunk_scores)
-            logging.info(f"Completed {completed:,d} / {len(df):,d} variants")
-
+        score = score_variant(model, tokenizer, fasta, row, args.ctx)
+        scores.append(score)
+        
+        if (i + 1) % 10 == 0:
+            valid = sum(1 for s in scores if not np.isnan(s))
+            logging.info(f"Completed {i+1}/{len(df)}, valid scores: {valid}")
+    
+    # Save results
     df["evo2_score"] = scores
     df.to_csv(args.out, sep="\t", index=False)
-    logging.info("Finished → %s", args.out)
+    
+    valid_scores = sum(1 for s in scores if not np.isnan(s))
+    logging.info(f"Finished: {valid_scores}/{len(scores)} valid scores saved to {args.out}")
 
 if __name__ == "__main__":
     main()
