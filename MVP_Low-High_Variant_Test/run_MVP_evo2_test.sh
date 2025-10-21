@@ -2,7 +2,6 @@
 #SBATCH -J run_MVP_test
 #SBATCH -o run_MVP_evo2_test.log
 #SBATCH --gpus 8
-#SBATCH -p batch
 #SBATCH -t 6:00:00
 
 ################################################################################################################
