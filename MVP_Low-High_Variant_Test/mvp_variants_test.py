@@ -63,8 +63,8 @@ def check_fp8_support():
 def main():
     #Deploy argument parsing
     parser = argparse.ArgumentParser("Evo2 MVP Variant Scorer")
-    parser.add_argument("--variants", required=True, help="Variant CSV file", default="/vast/projects/anuragv/cohort/mconery/mvp_variant_test/MVP_matched_variants.csv")
-    parser.add_argument("--fasta", required=True, help="Reference FASTA file", default="/vast/projects/anuragv/cohort/mconery/genome_assemblies/GRCh38.primary_assembly.genome.fa")
+    parser.add_argument("--variants", required=False, help="Variant CSV file", default="/vast/projects/anuragv/cohort/mconery/mvp_variant_test/MVP_matched_variants.csv")
+    parser.add_argument("--fasta", required=False, help="Reference FASTA file", default="/vast/projects/anuragv/cohort/mconery/genome_assemblies/GRCh38.primary_assembly.genome.fa")
     parser.add_argument("--out", required=True, help="Output file")
     parser.add_argument("--ctx", type=int, default=1_000_000, help="Context size (default: 1M)")
     parser.add_argument("--chunk-size", type=int, default=16, help="Number of variants per scoring batch (default: 16)")
