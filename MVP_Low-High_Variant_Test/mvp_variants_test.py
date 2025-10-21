@@ -76,7 +76,7 @@ def main():
     #Copy args to variables to simplify debugging
     variant_file = args.variants
     fasta_path = args.fasta
-    out_file = args.out_file
+    out_file = args.out
     chunk_size = args.chunk_size
     window_size = args.ctx
     MODEL_SIZE = args.model
