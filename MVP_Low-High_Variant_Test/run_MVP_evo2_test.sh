@@ -7,15 +7,15 @@
 ################################################################################################################
 ########################## Define directories and other key file/script locations ##############################
 ################################################################################################################
-out_file = "/vast/projects/anuragv/cohort/mconery/mvp_variant_test/MVP_variant_scores.1b_model.8192bp_context.csv"
-evotwo_script = "/vast/home/m/mconery/Evo2-TopMed-Variant-Scoring/MVP_Low-High_Variant_Test/mvp_variants_test.py"
+out_file="/vast/projects/anuragv/cohort/mconery/mvp_variant_test/MVP_variant_scores.1b_model.8192bp_context.csv"
+evotwo_script="/vast/home/m/mconery/Evo2-TopMed-Variant-Scoring/MVP_Low-High_Variant_Test/mvp_variants_test.py"
 
 ################################################################################################################
 ########################################## Define key model parameters #########################################
 ################################################################################################################
-chunk_size = 100
-window_size = 8192
-MODEL_SIZE = "1b"
+chunk_size=100
+window_size=8192
+MODEL_SIZE="1b"
 tp_size=1
 cp_size=1
 
