@@ -7,7 +7,7 @@
 ################################################################################################################
 ########################## Define directories and other key file/script locations ##############################
 ################################################################################################################
-out_file="/vast/projects/anuragv/cohort/mconery/mvp_variant_test/MVP_variant_scores.1b_model.8192bp_context.csv"
+out_file="/vast/projects/anuragv/cohort/mconery/mvp_variant_test/MVP_variant_scores.1b_model.16284bp_context.csv"
 evotwo_script="/vast/home/m/mconery/Evo2-TopMed-Variant-Scoring/MVP_Low-High_Variant_Test/mvp_variants_test.py"
 
 ################################################################################################################
