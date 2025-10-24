@@ -30,6 +30,7 @@ for MODEL_SIZE in "${MODEL_SIZES[@]}"; do
         	sbatch --export=MODEL_SIZE=$MODEL_SIZE,window_size=$window_size \
                		--job-name=$JOB_NAME \
                		run_MVP_evo2_worker.sh
+	fi
     done
 done
 
