@@ -145,7 +145,7 @@ calculate_wilcoxon_pvalues <- function(data) {
         }
         
         # Perform Wilcoxon test
-        test_result <- wilcox.test(low_pip, high_pip, exact = FALSE)
+        test_result <- wilcox.test(low_pip, high_pip, exact = FALSE, alternative = "greater")
         test_result$p.value
       }, error = function(e) {
         return(NA)
@@ -181,12 +181,13 @@ calculate_wilcoxon_pvalues <- function(data) {
 #'
 #' @param data Data frame with results
 #' @param vep_filter Optional grouped annotation to filter by (NULL for all)
+#' @param coding_filter Optional coding filter: 'coding', 'non-coding', or NULL for all
 #' @param title Plot title
 #' @param output_directory Directory to save plots
 #' @param sigma Pseudo-log scale parameter (controls linear region near zero)
 #' @return ggplot object
-create_faceted_boxplot <- function(data, vep_filter = NULL, title = NULL, 
-                                   output_directory = NULL, sigma = pseudolog_sigma) {
+create_faceted_boxplot <- function(data, vep_filter = NULL, title = NULL,
+                                   output_directory = NULL, coding_filter = NULL, sigma = pseudolog_sigma) {
   # Filter by VEP annotation if specified
   if (!is.null(vep_filter)) {
     data <- data %>% filter(`Grouped Annotation` == vep_filter)
@@ -198,11 +199,21 @@ create_faceted_boxplot <- function(data, vep_filter = NULL, title = NULL,
     if (is.null(title)) {
       title <- paste0("Evo2 Delta Scores by Model and Context Size\n(", vep_filter, ")")
     }
-  } else {
+  } else if (!is.null(coding_filter)){
+    data <- data %>% filter(`Coding` == ifelse(coding_filter == "coding", 1, 0))
+    
+    if (nrow(data) == 0) {
+      stop("No data found for coding_filter: ", coding_filter)
+    }
+    
+    if (is.null(title)) {
+      title <- paste0("Evo2 Delta Scores by Model and Context Size\n(", capitalize(coding_filter), " Variants)")
+    }
+  }else {
     if (is.null(title)) {
       title <- "Evo2 Delta Scores by Model and Context Size\n(All Variants)"
     }
-  }
+  } 
   
   # Create factor for model size with proper ordering
   data <- data %>%
@@ -350,7 +361,24 @@ main <- function() {
   save_plot(plot_all, "evo2_scores_all_variants", 
             width = plot_width, height = plot_height, format = output_format, output_directory = output_dir)
   
-  # Plot 2-N: Individual plots for each grouped annotation
+  # Plot 2-3: Plots for coding/non-coding variants
+  message("Creating plot for coding/non-coding variants...")
+  for (coding_option in c("coding", "non-coding")) {
+    # Create safe filename
+    safe_filename <- gsub("[^A-Za-z0-9_]", "_", coding_option)
+    safe_filename <- paste0("evo2_scores_", tolower(safe_filename))
+    
+    #Make plot
+    tryCatch({
+      plot_group <- create_faceted_boxplot(results_data, coding_filter = coding_option, output_directory = output_dir)
+      save_plot(plot_group, safe_filename, 
+                width = plot_width, height = plot_height, format = output_format, output_directory = output_dir)
+    }, error = function(e) {
+      message("Error creating plot for ", coding_option, ": ", e$message)
+    })
+  }
+  
+  # Plot 4-N: Individual plots for each grouped annotation
   grouped_annotations <- unique(results_data$`Grouped Annotation`[!is.na(results_data$`Grouped Annotation`)])
   
   for (annotation in sort(grouped_annotations)) {
