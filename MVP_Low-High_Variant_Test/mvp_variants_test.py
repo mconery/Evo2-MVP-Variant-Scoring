@@ -84,7 +84,7 @@ def main():
     checkpoint_dir = args.checkpoint_dir
     tp_size = args.tensor_parallel_size
     cp_size = args.context_parallel_size
-        
+
     # Define checkpoint path and download model weights if needed
     if MODEL_SIZE == "1b":
         #  This line will download the checkpoint from NGC to your $HOME/.cache/bionemo directory and return the path.
@@ -109,8 +109,8 @@ def main():
     print(gpu_info)
     
     #Make temp fasta files for variant scoring
-    ref_fasta_path = os.path.join(os.path.dirname(out_file), "temp_ref.fa")
-    var_fasta_path = os.path.join(os.path.dirname(out_file), "temp_var.fa")
+    ref_fasta_path = os.path.join(os.path.dirname(out_file), f"temp_ref.{MODEL_SIZE}.{window_size}bp.fa")
+    var_fasta_path = os.path.join(os.path.dirname(out_file), f"temp_var.{MODEL_SIZE}.{window_size}bp.fa")
     
     #Read in variants file
     variant_df = pd.read_csv(variant_file)
@@ -129,9 +129,37 @@ def main():
     
     print(f"Processing {len(variant_df)} variants...")
     num_variants = len(variant_df)
-    scored_chunk_dfs = []  # preallocate list of score dataframed
-    
-    for chunk_start in range(0, num_variants, chunk_size):
+
+    # Check if output is already complete — exit early before loading the model
+    if os.path.exists(out_file):
+        try:
+            existing_df = pd.read_csv(out_file)
+            if len(existing_df) >= num_variants:
+                print(f"Output file already complete ({len(existing_df)} variants). Skipping.")
+                sys.exit(0)
+        except Exception:
+            pass
+
+    # Check for existing partial results to enable resume
+    resume_from = 0
+    write_header = True
+    if os.path.exists(out_file):
+        try:
+            existing_df = pd.read_csv(out_file)
+            n_done = len(existing_df)
+            if n_done > 0:
+                # Round down to full-chunk boundary for safety
+                resume_from = (n_done // chunk_size) * chunk_size
+                if resume_from > 0:
+                    write_header = False
+                    # Truncate file to full chunks if a partial chunk was written
+                    if resume_from < n_done:
+                        existing_df.iloc[:resume_from].to_csv(out_file, index=False)
+                    print(f"Resuming from variant {resume_from} of {num_variants} ({resume_from} already scored)")
+        except Exception:
+            pass  # If file is corrupt/empty, start fresh
+
+    for chunk_start in range(resume_from, num_variants, chunk_size):
         chunk_end = min(chunk_start + chunk_size, num_variants)
         chunk_rows = variant_df.iloc[chunk_start:chunk_end]
         
@@ -144,6 +172,17 @@ def main():
                 idx, (ref_seq, alt_seq) = future.result()
                 results_by_index[idx] = (ref_seq, alt_seq)
         
+        # Truncate sequences for context parallelism compatibility.
+        # extract_context produces 2*(ctx//2)+1 bases (always odd).
+        # Megatron's get_batch_on_this_cp_rank requires seq length divisible by 2*cp_size.
+        if cp_size > 1:
+            divisor = 2 * cp_size
+            for variant in results_by_index:
+                ref_seq, alt_seq = results_by_index[variant]
+                if ref_seq is not None:
+                    trunc_len = (len(ref_seq) // divisor) * divisor
+                    results_by_index[variant] = (ref_seq[:trunc_len], alt_seq[:trunc_len])
+
         #Write the sequences to fasta files
         ref_entries = []
         var_entries = []
@@ -167,8 +206,8 @@ def main():
               
         #Set output directories
         output_dir = Path(os.path.dirname(out_file))
-        predict_ref_dir = output_dir / "reference_predictions"
-        predict_var_dir = output_dir / "variant_predictions"
+        predict_ref_dir = output_dir / f"reference_predictions.{MODEL_SIZE}.{window_size}bp"
+        predict_var_dir = output_dir / f"variant_predictions.{MODEL_SIZE}.{window_size}bp"
         predict_ref_dir.mkdir(parents=True, exist_ok=True)
         predict_var_dir.mkdir(parents=True, exist_ok=True)
         # Create prediction commands
@@ -214,17 +253,19 @@ def main():
         chunk_df["var_log_probs"] = var_log_probs
         # ideally probability of a broken variant is lower than a good one. So a bad var - good ref is negative.
         chunk_df["evo2_delta_score"] = chunk_df["var_log_probs"] - chunk_df["ref_log_probs"]
-        #Append chunk df to scored chunk dfs
-        scored_chunk_dfs.append(chunk_df)
-    
-    #Concatenate all dataframes together
-    scored_df = pd.concat(scored_chunk_dfs)
-    scored_df['class'] = np.where(scored_df['Overall PIP'] > 0.95, 'High PIP', 'Low PIP')
-    scored_df.to_csv(out_file, index=False)
+        chunk_df['class'] = np.where(chunk_df['Overall PIP'] > 0.95, 'High PIP', 'Low PIP')
+
+        # Save incrementally to preserve progress
+        mode = 'w' if write_header else 'a'
+        chunk_df.to_csv(out_file, mode=mode, header=write_header, index=False)
+        write_header = False
+        print(f"Saved chunk: variants {chunk_start+1}-{chunk_end} of {num_variants}")
     
     #Clean up temporary fasta files
-    os.remove(ref_fasta_path)
-    os.remove(var_fasta_path)
+    if os.path.exists(ref_fasta_path):
+        os.remove(ref_fasta_path)
+    if os.path.exists(var_fasta_path):
+        os.remove(var_fasta_path)
 
 if __name__ == "__main__":
     main()
