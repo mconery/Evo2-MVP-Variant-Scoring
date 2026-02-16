@@ -3,7 +3,7 @@
 #SBATCH -o run_MVP_evo2_test.log
 #SBATCH -p dgx-b200
 #SBATCH --gpus 8
-#SBATCH -t 6:00:00
+#SBATCH -t 10:00:00
 
 ################################################################################################################
 ########################################## Define key model parameters #########################################
@@ -29,4 +29,5 @@ export HF_HOME=/vast/projects/anuragv/cohort/mconery/bionemo/hf_cache
 export NEMO_CACHE_DIR=/vast/projects/anuragv/cohort/mconery/bionemo/hf_cache
 export BIONEMO_CACHE_DIR=/vast/projects/anuragv/cohort/mconery/bionemo/hf_cache
 export NEMO_MODELS_CACHE=/vast/projects/anuragv/cohort/mconery/bionemo/hf_cache
+export NGC_CLI_API_KEY="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"
 apptainer exec --nv --bind /vast/projects/anuragv/cohort/mconery:/vast/projects/anuragv/cohort/mconery /vast/projects/anuragv/cohort/mconery/bionemo/bionemo-nightly.sif python $evotwo_script --out $out_file --chunk-size $chunk_size --ctx $window_size --model $MODEL_SIZE --tensor-parallel-size $tp_size --context-parallel-size $cp_size 
