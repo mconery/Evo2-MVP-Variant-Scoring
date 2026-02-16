@@ -11,34 +11,17 @@
 ################################################################################################################
 
 # Define arrays of model sizes and context window sizes to test
-MODEL_SIZES=("1b" "7b" "7b_arc_longcontext" "40b_arc_longcontext")
-WINDOW_SIZES=(8192 16284 50000 100000)
+MODEL_SIZES=("1b" "7b" "40b" "7b_arc_longcontext" "40b_arc_longcontext")
+WINDOW_SIZES=(8192 16284 50000 100000 500000 1000000)
 
 ################################################################################################################
 ############################ Define per-model parallelism configurations #######################################
 ################################################################################################################
 
 # get_model_config MODEL_SIZE -> sets TP, CP, NUM_GPUS
+# All models use the same parallelism config
 get_model_config() {
-    local model="$1"
-    case "$model" in
-        1b)
-            TP=1; CP=1; NUM_GPUS=1
-            ;;
-        7b)
-            TP=1; CP=1; NUM_GPUS=1
-            ;;
-        7b_arc_longcontext)
-            TP=4; CP=2; NUM_GPUS=8
-            ;;
-        40b_arc_longcontext)
-            TP=4; CP=2; NUM_GPUS=8
-            ;;
-        *)
-            echo "Unknown model size: $model"
-            TP=1; CP=1; NUM_GPUS=1
-            ;;
-    esac
+    TP=4; CP=2; NUM_GPUS=8
 }
 
 ################################################################################################################
@@ -48,18 +31,14 @@ get_model_config() {
 for MODEL_SIZE in "${MODEL_SIZES[@]}"; do
     get_model_config "$MODEL_SIZE"
     for window_size in "${WINDOW_SIZES[@]}"; do
-	#Check if file exists already
-	out_file=/vast/projects/anuragv/cohort/mconery/mvp_variant_test/MVP_variant_scores."$MODEL_SIZE"_model."$window_size"bp_context.csv
-	if [[ ! -f "$out_file" ]]; then
-        	echo "Submitting job for MODEL_SIZE=$MODEL_SIZE, window_size=$window_size, TP=$TP, CP=$CP, GPUs=$NUM_GPUS"
-        	# Create unique job name
-       		JOB_NAME="MVP_${MODEL_SIZE}_${window_size}bp"
-		# Submit the job
-        	sbatch --export=MODEL_SIZE=$MODEL_SIZE,window_size=$window_size,tp_size=$TP,cp_size=$CP \
-			--gpus=$NUM_GPUS \
-               		--job-name=$JOB_NAME \
-               		run_MVP_evo2_worker.sh
-	fi
+        echo "Submitting job for MODEL_SIZE=$MODEL_SIZE, window_size=$window_size, TP=$TP, CP=$CP, GPUs=$NUM_GPUS"
+        # Create unique job name
+        JOB_NAME="MVP_${MODEL_SIZE}_${window_size}bp"
+        # Submit the job
+        sbatch --export=MODEL_SIZE=$MODEL_SIZE,window_size=$window_size,tp_size=$TP,cp_size=$CP \
+            --gpus=$NUM_GPUS \
+            --job-name=$JOB_NAME \
+            run_MVP_evo2_worker.sh
     done
 done
 
