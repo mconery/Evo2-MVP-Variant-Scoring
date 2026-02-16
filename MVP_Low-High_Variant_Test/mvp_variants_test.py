@@ -13,6 +13,7 @@ import argparse
 from pathlib import Path
 import torch
 import sys
+from bionemo.core.data.load import load
 from bionemo.core.utils.subprocess_utils import run_subprocess_safely
 import glob
 import json
@@ -86,10 +87,13 @@ def main():
         
     # Define checkpoint path and download model weights if needed
     if MODEL_SIZE == "1b":
-        from bionemo.core.data.load import load
         #  This line will download the checkpoint from NGC to your $HOME/.cache/bionemo directory and return the path.
         #  To do the same from the command line, use `CHECKPOINT_PATH=$(download_bionemo_data evo2/1b-8k-bf16:1.0)`
         checkpoint_path = load("evo2/1b-8k-bf16:1.0")
+    elif MODEL_SIZE == "40b_arc_longcontext":
+        checkpoint_path = load("evo2/40b-1m-fp8-bf16:1.0")
+    elif MODEL_SIZE == "7b_arc_longcontext":
+        checkpoint_path = load("evo2/7b-1m:1.0")
     else:
         checkpoint_path = Path(f"{checkpoint_dir}/nemo2_evo2_{MODEL_SIZE}_8k")
         # Check if the directory does not exist or is empty

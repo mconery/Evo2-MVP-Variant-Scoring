@@ -1,6 +1,7 @@
 #!/bin/bash
 
 #SBATCH -o run_MVP_evo2_%x.log
+#SBATCH -p dgx-b200
 #SBATCH --gpus=1
 #SBATCH -t 48:00:00
 
@@ -8,10 +9,10 @@
 ########################################## Define key model parameters #########################################
 ################################################################################################################
 
-# MODEL_SIZE and window_size are passed via --export from launcher script
+# MODEL_SIZE, window_size, tp_size, cp_size are passed via --export from launcher script
 chunk_size=100
-tp_size=1
-cp_size=1
+: "${tp_size:=1}"
+: "${cp_size:=1}"
 
 ################################################################################################################
 ########################## Define directories and other key file/script locations ##############################

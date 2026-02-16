@@ -1,6 +1,7 @@
 #!/bin/bash
 #SBATCH -J run_MVP_test
 #SBATCH -o run_MVP_evo2_test.log
+#SBATCH -p dgx-b200
 #SBATCH --gpus 8
 #SBATCH -t 6:00:00
 
@@ -9,7 +10,7 @@
 ################################################################################################################
 chunk_size=100
 window_size=8192
-MODEL_SIZE="40b"
+MODEL_SIZE="40b_arc_longcontext"
 tp_size=4
 cp_size=2
 
