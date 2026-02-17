@@ -51,7 +51,7 @@ for MODEL_SIZE in "${MODEL_SIZES[@]}"; do
         # Create unique job name
         JOB_NAME="MVP_${MODEL_SIZE}_${window_size}bp"
         # Submit the job
-        sbatch --export=MODEL_SIZE=$MODEL_SIZE,window_size=$window_size,tp_size=$TP,cp_size=$CP \
+        sbatch --export=ALL,MODEL_SIZE=$MODEL_SIZE,window_size=$window_size,tp_size=$TP,cp_size=$CP \
             --gpus=$NUM_GPUS \
             --time=$TIME_LIMIT \
             --job-name=$JOB_NAME \
