@@ -12,8 +12,8 @@
 ################################################################################################################
 
 # Define arrays of model sizes and context window sizes to test
-MODEL_SIZES=("1b" "7b" "40b" "7b_arc_longcontext" "40b_arc_longcontext")
-WINDOW_SIZES=(16284 50000 100000 500000 1000000)
+MODEL_SIZES=("40b" "7b_arc_longcontext" "40b_arc_longcontext")
+WINDOW_SIZES=(16284 50000 100000)
 
 ################################################################################################################
 ############################ Define per-model parallelism configurations #######################################
