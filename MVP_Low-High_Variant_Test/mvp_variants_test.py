@@ -174,13 +174,21 @@ def main():
         
         # Truncate sequences for context parallelism compatibility.
         # extract_context produces 2*(ctx//2)+1 bases (always odd).
-        # Megatron's get_batch_on_this_cp_rank requires seq length divisible by 2*cp_size.
+        # Megatron's get_batch_on_this_cp_rank requires seq length divisible by 2*cp_size*tp_size.
+        divisor = 1
         if cp_size > 1:
-            divisor = 2 * cp_size
+            divisor *= 2 * cp_size     # Megatron CP requirement
+        if tp_size > 1:
+            divisor *= tp_size         # ensure local dim is divisible by TP
+        
+        if divisor > 1:
             for variant in results_by_index:
                 ref_seq, alt_seq = results_by_index[variant]
                 if ref_seq is not None:
                     trunc_len = (len(ref_seq) // divisor) * divisor
+                    if trunc_len == 0:
+                        # Optionally skip or handle very short sequences
+                        continue
                     results_by_index[variant] = (ref_seq[:trunc_len], alt_seq[:trunc_len])
 
         #Write the sequences to fasta files
