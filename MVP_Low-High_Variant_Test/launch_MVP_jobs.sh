@@ -13,7 +13,7 @@
 
 # Define arrays of model sizes and context window sizes to test
 MODEL_SIZES=("7b" "40b" "7b_arc_longcontext" "40b_arc_longcontext")
-WINDOW_SIZES=(16384 50032 100000)
+WINDOW_SIZES=(65536 131072 524288 1000000)
 
 ################################################################################################################
 ############################ Define per-model parallelism configurations #######################################
@@ -30,10 +30,10 @@ get_time_limit() {
     local ws="$1"
     case "$ws" in
         8192)    TIME_LIMIT="8:00:00"  ;;
-        16284)   TIME_LIMIT="16:00:00" ;;
-        50000)   TIME_LIMIT="24:00:00" ;;
-        100000)  TIME_LIMIT="24:00:00" ;;
-        500000)  TIME_LIMIT="48:00:00" ;;
+        16384)   TIME_LIMIT="16:00:00" ;;
+        65536)   TIME_LIMIT="24:00:00" ;;
+        131072)  TIME_LIMIT="24:00:00" ;;
+        524288)  TIME_LIMIT="36:00:00" ;;
         1000000) TIME_LIMIT="48:00:00" ;;
         *)       TIME_LIMIT="48:00:00" ;;
     esac
