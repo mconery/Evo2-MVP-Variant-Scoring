@@ -52,7 +52,8 @@ for MODEL_SIZE in "${MODEL_SIZES[@]}"; do
         JOB_NAME="MVP_${MODEL_SIZE}_${window_size}bp"
         # Submit the job
         sbatch --export=ALL,MODEL_SIZE=$MODEL_SIZE,window_size=$window_size,tp_size=$TP,cp_size=$CP \
-            --gpus=$NUM_GPUS \
+            --nodes=1
+	    --gpus=$NUM_GPUS \
             --time=$TIME_LIMIT \
             --job-name=$JOB_NAME \
             run_MVP_evo2_worker.sh
