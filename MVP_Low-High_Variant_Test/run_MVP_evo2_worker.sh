@@ -10,8 +10,8 @@
 ########################################## Define key model parameters #########################################
 ################################################################################################################
 
-# MODEL_SIZE, window_size, tp_size, cp_size are passed via --export from launcher script
-chunk_size=100
+# MODEL_SIZE, window_size, tp_size, cp_size, chunk_size are passed via --export from launcher script
+: "${chunk_size:=100}"
 : "${tp_size:=1}"
 : "${cp_size:=1}"
 
