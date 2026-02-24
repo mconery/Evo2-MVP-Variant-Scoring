@@ -175,11 +175,16 @@ def main():
         # Truncate sequences for context parallelism compatibility.
         # extract_context produces 2*(ctx//2)+1 bases (always odd).
         # Megatron's get_batch_on_this_cp_rank requires seq length divisible by 2*cp_size*tp_size.
+        # Additionally, FP8 GEMM (TransformerEngine) requires each GPU's local sequence shard
+        # to be divisible by 8. The Hyena dense_projection splits the sequence across
+        # cp_size * tp_size GPUs, so the full sequence must be divisible by 8 * cp_size * tp_size.
         divisor = 1
         if cp_size > 1:
             divisor *= 2 * cp_size     # Megatron CP requirement
         if tp_size > 1:
             divisor *= tp_size         # ensure local dim is divisible by TP
+        if fp8_option:                 # FP8 GEMM: each rank's shard must be divisible by 8
+            divisor = max(divisor, 8 * cp_size * tp_size)
         
         if divisor > 1:
             for variant in results_by_index:
