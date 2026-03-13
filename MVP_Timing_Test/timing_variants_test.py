@@ -198,8 +198,8 @@ def mode_prepare(args):
 
     # Write FASTA files
     output_dir = Path(os.path.dirname(out_file))
-    ref_fasta_path = output_dir / f"temp_ref.{MODEL_SIZE}.{window_size}bp.fa"
-    var_fasta_path = output_dir / f"temp_var.{MODEL_SIZE}.{window_size}bp.fa"
+    ref_fasta_path = output_dir / f"temp_ref.{MODEL_SIZE}.tp{tp_size}_cp{cp_size}.{window_size}bp.fa"
+    var_fasta_path = output_dir / f"temp_var.{MODEL_SIZE}.tp{tp_size}_cp{cp_size}.{window_size}bp.fa"
 
     ref_entries = []
     var_entries = []
@@ -212,8 +212,8 @@ def mode_prepare(args):
         f.writelines(var_entries)
 
     # Create prediction output dirs
-    predict_ref_dir = output_dir / f"reference_predictions.{MODEL_SIZE}.{window_size}bp"
-    predict_var_dir = output_dir / f"variant_predictions.{MODEL_SIZE}.{window_size}bp"
+    predict_ref_dir = output_dir / f"reference_predictions.{MODEL_SIZE}.tp{tp_size}_cp{cp_size}.{window_size}bp"
+    predict_var_dir = output_dir / f"variant_predictions.{MODEL_SIZE}.tp{tp_size}_cp{cp_size}.{window_size}bp"
     predict_ref_dir.mkdir(parents=True, exist_ok=True)
     predict_var_dir.mkdir(parents=True, exist_ok=True)
 
@@ -233,6 +233,8 @@ def mode_process(args):
     MODEL_SIZE = args.model
     chunk_start = args.chunk_start
     chunk_end = args.chunk_end
+    tp_size = args.tensor_parallel_size
+    cp_size = args.context_parallel_size
 
     if chunk_end is None:
         sys.exit("--chunk-end is required for process mode")
@@ -248,10 +250,10 @@ def mode_process(args):
 
     # Reconstruct prediction paths (deterministic naming, no state files needed)
     output_dir = Path(os.path.dirname(out_file))
-    predict_ref_dir = output_dir / f"reference_predictions.{MODEL_SIZE}.{window_size}bp"
-    predict_var_dir = output_dir / f"variant_predictions.{MODEL_SIZE}.{window_size}bp"
-    ref_fasta_path = output_dir / f"temp_ref.{MODEL_SIZE}.{window_size}bp.fa"
-    var_fasta_path = output_dir / f"temp_var.{MODEL_SIZE}.{window_size}bp.fa"
+    predict_ref_dir = output_dir / f"reference_predictions.{MODEL_SIZE}.tp{tp_size}_cp{cp_size}.{window_size}bp"
+    predict_var_dir = output_dir / f"variant_predictions.{MODEL_SIZE}.tp{tp_size}_cp{cp_size}.{window_size}bp"
+    ref_fasta_path = output_dir / f"temp_ref.{MODEL_SIZE}.tp{tp_size}_cp{cp_size}.{window_size}bp.fa"
+    var_fasta_path = output_dir / f"temp_var.{MODEL_SIZE}.tp{tp_size}_cp{cp_size}.{window_size}bp.fa"
 
     # Find and load prediction files (rank 0 holds the full results)
     ref_pred_files = sorted(glob.glob(os.path.join(predict_ref_dir, "predictions__rank_*.pt")))
@@ -323,13 +325,13 @@ def mode_process(args):
 
 
 def main():
-    parser = argparse.ArgumentParser("Evo2 MVP Variant Scorer")
+    parser = argparse.ArgumentParser("Evo2 MVP Timing Variant Scorer")
     parser.add_argument("--mode", required=True, choices=["prepare", "process"],
                         help="prepare: extract sequences and write FASTAs; process: load predictions and write CSV")
     parser.add_argument("--chunk-start", type=int, default=0, help="Starting variant index for this chunk")
     parser.add_argument("--chunk-end", type=int, default=None, help="Ending variant index (process mode only)")
     parser.add_argument("--variants", required=False, help="Variant CSV file",
-                        default="/vast/projects/anuragv/cohort/mconery/mvp_variant_test/MVP_matched_variants.csv")
+                        default="/vast/projects/anuragv/cohort/mconery/mvp_timing_test/timing_sampled_variants.csv")
     parser.add_argument("--fasta", required=False, help="Reference FASTA file",
                         default="/vast/projects/anuragv/cohort/mconery/genome_assemblies/GRCh38.primary_assembly.genome.fa")
     parser.add_argument("--out", required=True, help="Output file")

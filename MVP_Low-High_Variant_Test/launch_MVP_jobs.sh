@@ -1,19 +1,15 @@
 #!/bin/bash
 
-#SBATCH -J launch_MVP_jobs
-#SBATCH -o launch_MVP_jobs.log
-#SBATCH --mem=1G
-#SBATCH --cpus-per-task=1
-#SBATCH -t 0:10:00
-#SBATCH -p genoa-std-mem
-
 ################################################################################################################
 ########################################## Define parameter combinations #######################################
 ################################################################################################################
 
 # Define arrays of model sizes and context window sizes to test
-MODEL_SIZES=("7b" "40b" "7b_arc_longcontext" "40b_arc_longcontext")
-WINDOW_SIZES=(65536 131072 524288 1000000)
+#MODEL_SIZES=("7b" "40b" "40b_arc_longcontext" "7b_arc_longcontext")
+MODEL_SIZES=("40b" "40b_arc_longcontext")
+#MODEL_SIZES=("7b_arc_longcontext")
+#WINDOW_SIZES=(1000000)
+WINDOW_SIZES=(524288)
 
 ################################################################################################################
 ############################ Define per-model parallelism configurations #######################################
@@ -22,7 +18,12 @@ WINDOW_SIZES=(65536 131072 524288 1000000)
 # get_model_config MODEL_SIZE -> sets TP, CP, NUM_GPUS
 # All models use the same parallelism config
 get_model_config() {
-    TP=4; CP=2; NUM_GPUS=8
+    TP=8; CP=1; NUM_GPUS=8
+}
+
+# get_chunk_size WINDOW_SIZE -> sets CHUNK_SIZE
+get_chunk_size() {
+    CHUNK_SIZE=40
 }
 
 # get_time_limit WINDOW_SIZE -> sets TIME_LIMIT
@@ -47,11 +48,12 @@ for MODEL_SIZE in "${MODEL_SIZES[@]}"; do
     get_model_config "$MODEL_SIZE"
     for window_size in "${WINDOW_SIZES[@]}"; do
         get_time_limit "$window_size"
-        echo "Submitting job for MODEL_SIZE=$MODEL_SIZE, window_size=$window_size, TP=$TP, CP=$CP, GPUs=$NUM_GPUS, TIME=$TIME_LIMIT"
+        get_chunk_size "$window_size"
+        echo "Submitting job for MODEL_SIZE=$MODEL_SIZE, window_size=$window_size, TP=$TP, CP=$CP, GPUs=$NUM_GPUS, TIME=$TIME_LIMIT, CHUNK_SIZE=$CHUNK_SIZE"
         # Create unique job name
         JOB_NAME="MVP_${MODEL_SIZE}_${window_size}bp"
         # Submit the job
-        sbatch --export=ALL,MODEL_SIZE=$MODEL_SIZE,window_size=$window_size,tp_size=$TP,cp_size=$CP \
+        sbatch --export=ALL,MODEL_SIZE=$MODEL_SIZE,window_size=$window_size,tp_size=$TP,cp_size=$CP,chunk_size=$CHUNK_SIZE \
             --nodes=1 \
 	    --gpus=$NUM_GPUS \
             --time=$TIME_LIMIT \

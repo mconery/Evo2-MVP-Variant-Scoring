@@ -1,9 +1,9 @@
 #!/bin/bash
 
-#SBATCH -o run_MVP_evo2_%x.log
+#SBATCH -o run_timing_evo2_%x.log
 #SBATCH -p dgx-b200
-#SBATCH --gpus=16
-#SBATCH -t 48:00:00
+#SBATCH --gpus=8
+#SBATCH -t 6:00:00
 #SBATCH -N 1
 
 ################################################################################################################
@@ -12,16 +12,18 @@
 
 # MODEL_SIZE, window_size, tp_size, cp_size, chunk_size are passed via --export from launcher script
 : "${chunk_size:=100}"
-: "${tp_size:=1}"
+: "${tp_size:=8}"
 : "${cp_size:=1}"
 
 ################################################################################################################
 ########################## Define directories and other key file/script locations ##############################
 ################################################################################################################
 
-out_file=/vast/projects/anuragv/cohort/mconery/mvp_variant_test/MVP_variant_scores."$MODEL_SIZE"_model."$window_size"bp_context.csv
+output_dir=/vast/projects/anuragv/cohort/mconery/mvp_timing_test
 
-evotwo_script="/vast/home/m/mconery/Evo2-TopMed-Variant-Scoring/MVP_Low-High_Variant_Test/mvp_variants_test.py"
+out_file=${output_dir}/timing_scores.${MODEL_SIZE}_tp${tp_size}_cp${cp_size}_chunk${chunk_size}_${window_size}bp.csv
+
+evotwo_script="/vast/home/m/mconery/Evo2-TopMed-Variant-Scoring/MVP_Timing_Test/timing_variants_test.py"
 
 SIF_PATH=/vast/projects/anuragv/cohort/mconery/bionemo/bionemo-nightly.sif
 BIND_PATH=/vast/projects/anuragv/cohort/mconery:/vast/projects/anuragv/cohort/mconery
@@ -30,11 +32,10 @@ APPTAINER_CMD="apptainer exec --nv --bind ${BIND_PATH} ${SIF_PATH}"
 TOTAL_GPUS=$((tp_size * cp_size))
 GPUS_PER_NODE=$((TOTAL_GPUS / ${SLURM_NNODES:-1}))
 
-output_dir=/vast/projects/anuragv/cohort/mconery/mvp_variant_test
-ref_fasta_path=${output_dir}/temp_ref.${MODEL_SIZE}.${window_size}bp.fa
-var_fasta_path=${output_dir}/temp_var.${MODEL_SIZE}.${window_size}bp.fa
-predict_ref_dir=${output_dir}/reference_predictions.${MODEL_SIZE}.${window_size}bp
-predict_var_dir=${output_dir}/variant_predictions.${MODEL_SIZE}.${window_size}bp
+ref_fasta_path=${output_dir}/temp_ref.${MODEL_SIZE}.tp${tp_size}_cp${cp_size}_chunk${chunk_size}.${window_size}bp.fa
+var_fasta_path=${output_dir}/temp_var.${MODEL_SIZE}.tp${tp_size}_cp${cp_size}_chunk${chunk_size}.${window_size}bp.fa
+predict_ref_dir=${output_dir}/reference_predictions.${MODEL_SIZE}.tp${tp_size}_cp${cp_size}_chunk${chunk_size}.${window_size}bp
+predict_var_dir=${output_dir}/variant_predictions.${MODEL_SIZE}.tp${tp_size}_cp${cp_size}_chunk${chunk_size}.${window_size}bp
 
 ################################################################################################################
 ############################################# Call Evo2 Scoring Script #########################################
@@ -53,6 +54,10 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 chunk_start=0
 FP8_FLAG=""
 FIRST_CHUNK=1
+JOB_STATUS=SUCCESS
+FAIL_REASON=""
+
+START_TIME=$(date +%s)
 
 while true; do
     # Prepare FASTAs and detect FP8 / resume point for this chunk
@@ -84,7 +89,7 @@ while true; do
         fi
     fi
 
-    # Run distributed inference across both nodes for REF sequences
+    # Run distributed inference for REF sequences
     srun --ntasks=${TOTAL_GPUS} --ntasks-per-node=${GPUS_PER_NODE} \
         apptainer exec --nv --bind ${BIND_PATH} ${SIF_PATH} \
         predict_evo2 --fasta ${ref_fasta_path} \
@@ -94,9 +99,15 @@ while true; do
         --tensor-parallel-size ${tp_size} \
         --pipeline-model-parallel-size 1 \
         --context-parallel-size ${cp_size} \
-        --output-log-prob-seqs ${FP8_FLAG} || break
+        --output-log-prob-seqs ${FP8_FLAG}
+    srun_exit=$?
+    if [ $srun_exit -ne 0 ]; then
+        JOB_STATUS=FAILED
+        FAIL_REASON="srun predict_evo2 (REF) failed with exit code ${srun_exit} at chunk_start=${chunk_start}"
+        break
+    fi
 
-    # Run distributed inference across both nodes for ALT sequences
+    # Run distributed inference for ALT sequences
     srun --ntasks=${TOTAL_GPUS} --ntasks-per-node=${GPUS_PER_NODE} \
         apptainer exec --nv --bind ${BIND_PATH} ${SIF_PATH} \
         predict_evo2 --fasta ${var_fasta_path} \
@@ -106,7 +117,13 @@ while true; do
         --tensor-parallel-size ${tp_size} \
         --pipeline-model-parallel-size 1 \
         --context-parallel-size ${cp_size} \
-        --output-log-prob-seqs ${FP8_FLAG} || break
+        --output-log-prob-seqs ${FP8_FLAG}
+    srun_exit=$?
+    if [ $srun_exit -ne 0 ]; then
+        JOB_STATUS=FAILED
+        FAIL_REASON="srun predict_evo2 (ALT) failed with exit code ${srun_exit} at chunk_start=${chunk_start}"
+        break
+    fi
 
     # Process results and write to CSV
     ${APPTAINER_CMD} python $evotwo_script \
@@ -117,3 +134,23 @@ while true; do
 
     chunk_start=${CHUNK_END}
 done
+
+END_TIME=$(date +%s)
+DURATION=$((END_TIME - START_TIME))
+
+################################################################################################################
+############################################### Record timing results ##########################################
+################################################################################################################
+
+TIMING_CSV="${output_dir}/timing_results.csv"
+HEADER="model,context_bp,tp_size,cp_size,chunk_size,start_time,end_time,duration_seconds,status,fail_reason"
+ROW="${MODEL_SIZE},${window_size},${tp_size},${cp_size},${chunk_size},${START_TIME},${END_TIME},${DURATION},${JOB_STATUS},${FAIL_REASON}"
+
+# Atomic append with flock; write header only if file does not yet exist
+(
+    flock -x 200
+    if [ ! -f "${TIMING_CSV}" ]; then
+        echo "${HEADER}" >> "${TIMING_CSV}"
+    fi
+    echo "${ROW}" >> "${TIMING_CSV}"
+) 200>"${TIMING_CSV}.lock"
