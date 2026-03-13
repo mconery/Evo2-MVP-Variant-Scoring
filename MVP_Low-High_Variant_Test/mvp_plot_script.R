@@ -19,7 +19,7 @@ library(scales)  # For pseudo-log transformation
 # ============================================================================
 
 # Directory containing the results files
-results_dir <- "C:/Users/mitch/Documents/Argonne/Variant_Scoring/scored_MVP_results"
+results_dir <- "C:/Users/mitch/Documents/Argonne/Variant_Scoring/scored_MVP_results_v2"
 
 # Output directory for plots
 output_dir <- "C:/Users/mitch/Documents/Argonne/Variant_Scoring"
@@ -158,10 +158,7 @@ calculate_wilcoxon_pvalues <- function(data) {
     mutate(
       p_label = case_when(
         is.na(p_value) ~ "N/A",
-        p_value < 0.001 ~ formatC(p_value, format = "e", digits = 2),
-        p_value < 0.01 ~ formatC(p_value, format = "e", digits = 2),
-        p_value < 0.05 ~ formatC(p_value, format = "e", digits = 2),
-        TRUE ~ formatC(p_value, format = "e", digits = 2)
+        TRUE ~ formatC(p_value, format = "e", digits = 1)
       ),
       significance = case_when(
         is.na(p_value) ~ "",
@@ -170,7 +167,7 @@ calculate_wilcoxon_pvalues <- function(data) {
         p_value < 0.05 ~ "*",
         TRUE ~ "ns"
       ),
-      p_display = paste0(p_label, " ", significance)
+      p_display = paste0("p=", p_label)
     )
   
   return(pvalues)
@@ -187,7 +184,8 @@ calculate_wilcoxon_pvalues <- function(data) {
 #' @param sigma Pseudo-log scale parameter (controls linear region near zero)
 #' @return ggplot object
 create_faceted_boxplot <- function(data, vep_filter = NULL, title = NULL,
-                                   output_directory = NULL, coding_filter = NULL, sigma = pseudolog_sigma) {
+                                   output_directory = NULL, coding_filter = NULL,
+                                   long_context_only = FALSE, sigma = pseudolog_sigma) {
   # Filter by VEP annotation if specified
   if (!is.null(vep_filter)) {
     data <- data %>% filter(`Grouped Annotation` == vep_filter)
@@ -207,7 +205,7 @@ create_faceted_boxplot <- function(data, vep_filter = NULL, title = NULL,
     }
     
     if (is.null(title)) {
-      title <- paste0("Evo2 Delta Scores by Model and Context Size\n(", capitalize(coding_filter), " Variants)")
+      title <- paste0("Evo2 Delta Scores by Model and Context Size\n(", str_to_title(coding_filter), " Variants)")
     }
   }else {
     if (is.null(title)) {
@@ -218,9 +216,16 @@ create_faceted_boxplot <- function(data, vep_filter = NULL, title = NULL,
   # Create factor for model size with proper ordering
   data <- data %>%
     mutate(
-      model_size_factor = factor(model_size, levels = c("1b", "7b", "40b")),
-      context_size_factor = factor(paste0(context_size, " bp"), levels = paste0(sort(unique(context_size)), " bp"))
+      model_size = str_replace_all(str_replace_all(str_replace_all(model_size, "_", " "), "arc ", ""), "longcontext", "Long-Context"),
+      model_size_factor = factor(model_size, levels = c("1b", "7b", "7b Long-Context", "40b", "40b Long-Context")),
+      context_size_factor = factor(ifelse(context_size!=1000000, paste0(context_size, " bp"), "1 Mb"), levels = ifelse(sort(unique(context_size))!=1000000, paste0(sort(unique(context_size)), " bp"), "1 Mb"))
     )
+
+  # Optionally restrict to long-context models only
+  if (long_context_only) {
+    data <- data %>% filter(grepl("Long-Context", model_size))
+    if (nrow(data) == 0) stop("No long-context model data found")
+  }
   
   # Calculate Wilcoxon test p-values
   message("Calculating Wilcoxon test p-values...")
@@ -229,8 +234,8 @@ create_faceted_boxplot <- function(data, vep_filter = NULL, title = NULL,
   # Add factor columns to pvalues for merging
   pvalues <- pvalues %>%
     mutate(
-      model_size_factor = factor(model_size, levels = c("1b", "7b", "40b")),
-      context_size_factor = factor(paste0(context_size, " bp"), levels = paste0(sort(unique(context_size)), " bp"))
+      model_size_factor = factor(model_size, levels = c("1b", "7b", "7b Long-Context", "40b", "40b Long-Context")),
+      context_size_factor = factor(ifelse(context_size!=1000000, paste0(context_size, " bp"), "1 Mb"), levels = ifelse(sort(unique(context_size))!=1000000, paste0(sort(unique(context_size)), " bp"), "1 Mb"))
     )
   
   # Print p-values
@@ -242,54 +247,48 @@ create_faceted_boxplot <- function(data, vep_filter = NULL, title = NULL,
     group_by(model_size_factor, context_size_factor, class) %>%
     summarise(n = n(), .groups = "drop")
   
-  # Calculate y-position for p-value labels in pseudo-log space
-  # Position labels at top of transformed data range
-  y_max <- max(data$evo2_delta_score, na.rm = TRUE)
-  y_min <- min(data$evo2_delta_score, na.rm = TRUE)
-  
-  # For pseudo-log transformed space, we need to be careful with label positioning
-  # Place label slightly above the maximum value
-  if (y_max > 0) {
-    label_y <- y_max * 1.3
-  } else {
-    label_y <- y_max * 0.7
-  }
-  
   # Create the plot with pseudo-log scale
   p <- ggplot(data, aes(x = class, y = evo2_delta_score, fill = class)) +
-    geom_boxplot(outlier.size = 0.5, outlier.alpha = 0.3) +
-    # Add p-value labels to each facet
+    geom_violin() +
+    stat_summary(
+      fun = median, fun.min = median, fun.max = median,
+      geom = "crossbar", width = 0.3, color = "black", linewidth = 0.8
+    ) +
+    # Add p-value labels pinned to top of each facet panel
     geom_text(
       data = pvalues,
-      aes(x = 1.5, y = label_y, label = p_display),
+      aes(x = 1.5, y = Inf, label = p_display),
       inherit.aes = FALSE,
-      size = 3,
+      vjust = 1.5,
+      size = 4.5,
       fontface = "bold"
     ) +
-    # Apply pseudo-log scale transformation to y-axis
+    # Apply pseudo-log scale transformation to y-axis, showing only 0
     scale_y_continuous(
       trans = pseudo_log_trans(sigma = sigma),
-      labels = label_number(accuracy = 0.0001)
+      breaks = 0,
+      labels = "0"
     ) +
-    facet_grid(context_size_factor ~ model_size_factor,
-               labeller = labeller(
-                 context_size_factor = function(x) paste("Context:", x),
-                 model_size_factor = function(x) paste("Model:", x)
-               )) +
+    facet_grid(context_size_factor ~ model_size_factor, scales = "free") +
     labs(
       title = title,
-      x = "PIP Class",
-      y = "Evo2 Delta Score (pseudo-log scale)",
-      fill = "PIP Class"
+      x = NULL,
+      y = "Evo2 Delta Score (pseudo-log scale)"
     ) +
     theme_bw() +
     theme(
-      plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+      plot.title = element_text(hjust = 0.5, face = "bold", size = 18),
+      plot.margin = margin(5, 20, 5, 5, "mm"),
+      axis.text = element_text(size = 12),
       axis.text.x = element_text(angle = 45, hjust = 1),
-      strip.text = element_text(face = "bold", size = 10),
-      legend.position = "bottom"
+      axis.title = element_text(size = 13),
+      strip.text.x = element_text(face = "bold", size = 13),
+      strip.text.y = element_text(face = "bold", size = 12, angle = 0),
+      legend.position = "none",
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank()
     ) +
-    scale_fill_brewer(palette = "Set2")
+    scale_fill_manual(values = c("Low PIP" = "#6baed6", "High PIP" = "#08519c"))
   
   # Print sample counts
   message("\nSample counts per facet:")
@@ -354,47 +353,66 @@ main <- function() {
   message("\nStep 3: Creating plots...\n")
   message("Output directory: ", output_dir)
   message("Using pseudo-log scale with sigma = ", pseudolog_sigma)
-  
-  # Plot 1: Overall results (all variants)
-  message("Creating plot for all variants...")
-  plot_all <- create_faceted_boxplot(results_data, vep_filter = NULL, output_directory = output_dir)
-  save_plot(plot_all, "evo2_scores_all_variants", 
-            width = plot_width, height = plot_height, format = output_format, output_directory = output_dir)
-  
-  # Plot 2-3: Plots for coding/non-coding variants
-  message("Creating plot for coding/non-coding variants...")
-  for (coding_option in c("coding", "non-coding")) {
-    # Create safe filename
-    safe_filename <- gsub("[^A-Za-z0-9_]", "_", coding_option)
-    safe_filename <- paste0("evo2_scores_", tolower(safe_filename))
-    
-    #Make plot
-    tryCatch({
-      plot_group <- create_faceted_boxplot(results_data, coding_filter = coding_option, output_directory = output_dir)
-      save_plot(plot_group, safe_filename, 
-                width = plot_width, height = plot_height, format = output_format, output_directory = output_dir)
-    }, error = function(e) {
-      message("Error creating plot for ", coding_option, ": ", e$message)
-    })
-  }
-  
-  # Plot 4-N: Individual plots for each grouped annotation
-  grouped_annotations <- unique(results_data$`Grouped Annotation`[!is.na(results_data$`Grouped Annotation`)])
-  
-  for (annotation in sort(grouped_annotations)) {
-    message("\nCreating plot for: ", annotation)
-    
-    # Create safe filename
-    safe_filename <- gsub("[^A-Za-z0-9_]", "_", annotation)
-    safe_filename <- paste0("evo2_scores_", tolower(safe_filename))
-    
-    tryCatch({
-      plot_group <- create_faceted_boxplot(results_data, vep_filter = annotation, output_directory = output_dir)
-      save_plot(plot_group, safe_filename, 
-                width = plot_width, height = plot_height, format = output_format, output_directory = output_dir)
-    }, error = function(e) {
-      message("Error creating plot for ", annotation, ": ", e$message)
-    })
+
+  grouped_annotations <- unique(
+    results_data$`Grouped Annotation`[!is.na(results_data$`Grouped Annotation`)]
+  )
+
+  for (lc_only in c(FALSE, TRUE)) {
+    lc_suffix <- if (lc_only) "_long_context" else ""
+    lc_label  <- if (lc_only) " (long-context models only)" else ""
+
+    # All variants
+    message("Creating plot for all variants", lc_label, "...")
+    plot_all <- create_faceted_boxplot(
+      results_data, vep_filter = NULL,
+      long_context_only = lc_only, output_directory = output_dir
+    )
+    save_plot(plot_all, paste0("evo2_scores_all_variants", lc_suffix),
+              width = plot_width, height = plot_height,
+              format = output_format, output_directory = output_dir)
+
+    # Coding / non-coding variants
+    message("Creating coding/non-coding plots", lc_label, "...")
+    for (coding_option in c("coding", "non-coding")) {
+      safe_filename <- paste0(
+        "evo2_scores_",
+        tolower(gsub("[^A-Za-z0-9_]", "_", coding_option)),
+        lc_suffix
+      )
+      tryCatch({
+        plot_group <- create_faceted_boxplot(
+          results_data, coding_filter = coding_option,
+          long_context_only = lc_only, output_directory = output_dir
+        )
+        save_plot(plot_group, safe_filename,
+                  width = plot_width, height = plot_height,
+                  format = output_format, output_directory = output_dir)
+      }, error = function(e) {
+        message("Error creating plot for ", coding_option, ": ", e$message)
+      })
+    }
+
+    # Individual grouped annotation plots
+    for (annotation in sort(grouped_annotations)) {
+      message("\nCreating plot for: ", annotation, lc_label)
+      safe_filename <- paste0(
+        "evo2_scores_",
+        tolower(gsub("[^A-Za-z0-9_]", "_", annotation)),
+        lc_suffix
+      )
+      tryCatch({
+        plot_group <- create_faceted_boxplot(
+          results_data, vep_filter = annotation,
+          long_context_only = lc_only, output_directory = output_dir
+        )
+        save_plot(plot_group, safe_filename,
+                  width = plot_width, height = plot_height,
+                  format = output_format, output_directory = output_dir)
+      }, error = function(e) {
+        message("Error creating plot for ", annotation, ": ", e$message)
+      })
+    }
   }
   
   message("\n=== Analysis Complete ===")
