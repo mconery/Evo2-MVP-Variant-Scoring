@@ -5,8 +5,11 @@
 ################################################################################################################
 
 # Define arrays of model sizes and context window sizes to test
-MODEL_SIZES=("7b" "40b" "7b_arc_longcontext" "40b_arc_longcontext")
-WINDOW_SIZES=(131072 524288 1000000)
+#MODEL_SIZES=("7b" "40b" "40b_arc_longcontext" "7b_arc_longcontext")
+MODEL_SIZES=("40b" "40b_arc_longcontext")
+#MODEL_SIZES=("7b_arc_longcontext")
+#WINDOW_SIZES=(1000000)
+WINDOW_SIZES=(524288)
 
 ################################################################################################################
 ############################ Define per-model parallelism configurations #######################################
@@ -15,18 +18,12 @@ WINDOW_SIZES=(131072 524288 1000000)
 # get_model_config MODEL_SIZE -> sets TP, CP, NUM_GPUS
 # All models use the same parallelism config
 get_model_config() {
-    TP=4; CP=2; NUM_GPUS=8
+    TP=8; CP=1; NUM_GPUS=8
 }
 
 # get_chunk_size WINDOW_SIZE -> sets CHUNK_SIZE
-# Smaller chunks reduce peak GPU memory for large contexts on the 40b model
 get_chunk_size() {
-    local ws="$1"
-    case "$ws" in
-        524288)  CHUNK_SIZE=50  ;;
-        1000000) CHUNK_SIZE=25  ;;
-        *)       CHUNK_SIZE=100 ;;
-    esac
+    CHUNK_SIZE=40
 }
 
 # get_time_limit WINDOW_SIZE -> sets TIME_LIMIT
