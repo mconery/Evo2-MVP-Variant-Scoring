@@ -198,8 +198,8 @@ def mode_prepare(args):
 
     # Write FASTA files
     output_dir = Path(os.path.dirname(out_file))
-    ref_fasta_path = output_dir / f"temp_ref.{MODEL_SIZE}.tp{tp_size}_cp{cp_size}.{window_size}bp.fa"
-    var_fasta_path = output_dir / f"temp_var.{MODEL_SIZE}.tp{tp_size}_cp{cp_size}.{window_size}bp.fa"
+    ref_fasta_path = output_dir / f"temp_ref.{MODEL_SIZE}.tp{tp_size}_cp{cp_size}_chunk{chunk_size}.{window_size}bp.fa"
+    var_fasta_path = output_dir / f"temp_var.{MODEL_SIZE}.tp{tp_size}_cp{cp_size}_chunk{chunk_size}.{window_size}bp.fa"
 
     ref_entries = []
     var_entries = []
@@ -212,8 +212,8 @@ def mode_prepare(args):
         f.writelines(var_entries)
 
     # Create prediction output dirs
-    predict_ref_dir = output_dir / f"reference_predictions.{MODEL_SIZE}.tp{tp_size}_cp{cp_size}.{window_size}bp"
-    predict_var_dir = output_dir / f"variant_predictions.{MODEL_SIZE}.tp{tp_size}_cp{cp_size}.{window_size}bp"
+    predict_ref_dir = output_dir / f"reference_predictions.{MODEL_SIZE}.tp{tp_size}_cp{cp_size}_chunk{chunk_size}.{window_size}bp"
+    predict_var_dir = output_dir / f"variant_predictions.{MODEL_SIZE}.tp{tp_size}_cp{cp_size}_chunk{chunk_size}.{window_size}bp"
     predict_ref_dir.mkdir(parents=True, exist_ok=True)
     predict_var_dir.mkdir(parents=True, exist_ok=True)
 
@@ -250,10 +250,10 @@ def mode_process(args):
 
     # Reconstruct prediction paths (deterministic naming, no state files needed)
     output_dir = Path(os.path.dirname(out_file))
-    predict_ref_dir = output_dir / f"reference_predictions.{MODEL_SIZE}.tp{tp_size}_cp{cp_size}.{window_size}bp"
-    predict_var_dir = output_dir / f"variant_predictions.{MODEL_SIZE}.tp{tp_size}_cp{cp_size}.{window_size}bp"
-    ref_fasta_path = output_dir / f"temp_ref.{MODEL_SIZE}.tp{tp_size}_cp{cp_size}.{window_size}bp.fa"
-    var_fasta_path = output_dir / f"temp_var.{MODEL_SIZE}.tp{tp_size}_cp{cp_size}.{window_size}bp.fa"
+    predict_ref_dir = output_dir / f"reference_predictions.{MODEL_SIZE}.tp{tp_size}_cp{cp_size}_chunk{chunk_size}.{window_size}bp"
+    predict_var_dir = output_dir / f"variant_predictions.{MODEL_SIZE}.tp{tp_size}_cp{cp_size}_chunk{chunk_size}.{window_size}bp"
+    ref_fasta_path = output_dir / f"temp_ref.{MODEL_SIZE}.tp{tp_size}_cp{cp_size}_chunk{chunk_size}.{window_size}bp.fa"
+    var_fasta_path = output_dir / f"temp_var.{MODEL_SIZE}.tp{tp_size}_cp{cp_size}_chunk{chunk_size}.{window_size}bp.fa"
 
     # Find and load prediction files (rank 0 holds the full results)
     ref_pred_files = sorted(glob.glob(os.path.join(predict_ref_dir, "predictions__rank_*.pt")))
