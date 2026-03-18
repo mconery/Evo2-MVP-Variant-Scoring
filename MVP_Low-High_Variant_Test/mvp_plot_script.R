@@ -19,13 +19,16 @@ library(scales)  # For pseudo-log transformation
 # ============================================================================
 
 # Directory containing the results files
-results_dir <- "C:/Users/mitch/Documents/Argonne/Variant_Scoring/scored_MVP_results_v2"
+results_dir <- "C:/Users/mitch/Documents/Argonne/Variant_Scoring/scored_MVP_results"
 
 # Output directory for plots
-output_dir <- "C:/Users/mitch/Documents/Argonne/Variant_Scoring"
+output_dir <- "C:/Users/mitch/Documents/Argonne/Variant_Scoring/scored_MVP_figures"
 
 # VEP annotations mapping file (located in output directory)
-vep_annotations_file <- paste(output_dir, "vep_annotations.txt", sep = "/")
+vep_annotations_file <- "C:/Users/mitch/Documents/Argonne/Variant_Scoring/vep_annotations.txt"
+
+# Conservation scores file (phastCons, phyloP, GERP)
+conservation_file <- "C:/Users/mitch/Documents/Argonne/Variant_Scoring/MVP_conservation_scores.csv"
 
 # Output plot settings
 plot_width <- 12
@@ -185,7 +188,8 @@ calculate_wilcoxon_pvalues <- function(data) {
 #' @return ggplot object
 create_faceted_boxplot <- function(data, vep_filter = NULL, title = NULL,
                                    output_directory = NULL, coding_filter = NULL,
-                                   long_context_only = FALSE, sigma = pseudolog_sigma) {
+                                   long_context_only = FALSE, sigma = pseudolog_sigma,
+                                   max_context_size = NULL) {
   # Filter by VEP annotation if specified
   if (!is.null(vep_filter)) {
     data <- data %>% filter(`Grouped Annotation` == vep_filter)
@@ -226,7 +230,13 @@ create_faceted_boxplot <- function(data, vep_filter = NULL, title = NULL,
     data <- data %>% filter(grepl("Long-Context", model_size))
     if (nrow(data) == 0) stop("No long-context model data found")
   }
-  
+
+  # Optionally cap context size
+  if (!is.null(max_context_size)) {
+    data <- data %>% filter(context_size <= max_context_size)
+    if (nrow(data) == 0) stop("No data remaining after context size filter (<= ", max_context_size, ")")
+  }
+
   # Calculate Wilcoxon test p-values
   message("Calculating Wilcoxon test p-values...")
   pvalues <- calculate_wilcoxon_pvalues(data)
@@ -326,6 +336,48 @@ save_plot <- function(plot, filename, width = 12, height = 8, format = "png", ou
   message("Plot saved to: ", output_file)
 }
 
+#' Build a wide-format collated results table from all model/context combinations
+#'
+#' @param data Combined data frame from load_results_files()
+#' @return Wide data frame with 13 metadata columns + 3 score columns per combo
+build_collated_table <- function(data) {
+  base_cols <- c("MVP ID", "RSID", "BP", "BP38", "VEP Annotation", "CHR",
+                 "EAF Population", "Beta Population", "P-Value Population",
+                 "Overall PIP", "CS-Level Pip", "mu", "Set")
+
+  # One copy of variant metadata (identical across all files)
+  base <- data %>%
+    filter(model_size == first(model_size), context_size == first(context_size)) %>%
+    select(all_of(base_cols))
+
+  score_cols <- c("ref_log_probs", "var_log_probs", "evo2_delta_score")
+
+  combos <- data %>%
+    distinct(model_size, context_size) %>%
+    arrange(model_size, context_size) %>%
+    filter(
+      (grepl("longcontext", model_size) & context_size <= 524288) |
+      (!grepl("longcontext", model_size) & context_size <= 131072)
+    )
+
+  message("Collating ", nrow(combos), " model/context combinations")
+
+  for (i in seq_len(nrow(combos))) {
+    ms <- combos$model_size[i]
+    cs <- combos$context_size[i]
+    suffix <- paste0("_", ms, "_", cs, "bp")
+
+    scores <- data %>%
+      filter(model_size == ms, context_size == cs) %>%
+      select(`MVP ID`, all_of(score_cols)) %>%
+      rename_with(~ paste0(.x, suffix), all_of(score_cols))
+
+    base <- base %>% left_join(scores, by = "MVP ID")
+  }
+
+  return(base)
+}
+
 # ============================================================================
 # MAIN SCRIPT
 # ============================================================================
@@ -354,19 +406,17 @@ main <- function() {
   message("Output directory: ", output_dir)
   message("Using pseudo-log scale with sigma = ", pseudolog_sigma)
 
-  grouped_annotations <- unique(
-    results_data$`Grouped Annotation`[!is.na(results_data$`Grouped Annotation`)]
-  )
-
   for (lc_only in c(FALSE, TRUE)) {
     lc_suffix <- if (lc_only) "_long_context" else ""
     lc_label  <- if (lc_only) " (long-context models only)" else ""
+    max_context <- if (lc_only) 524288 else 131072
 
     # All variants
     message("Creating plot for all variants", lc_label, "...")
     plot_all <- create_faceted_boxplot(
       results_data, vep_filter = NULL,
-      long_context_only = lc_only, output_directory = output_dir
+      long_context_only = lc_only, output_directory = output_dir,
+      max_context_size = max_context
     )
     save_plot(plot_all, paste0("evo2_scores_all_variants", lc_suffix),
               width = plot_width, height = plot_height,
@@ -383,7 +433,8 @@ main <- function() {
       tryCatch({
         plot_group <- create_faceted_boxplot(
           results_data, coding_filter = coding_option,
-          long_context_only = lc_only, output_directory = output_dir
+          long_context_only = lc_only, output_directory = output_dir,
+          max_context_size = max_context
         )
         save_plot(plot_group, safe_filename,
                   width = plot_width, height = plot_height,
@@ -392,29 +443,52 @@ main <- function() {
         message("Error creating plot for ", coding_option, ": ", e$message)
       })
     }
-
-    # Individual grouped annotation plots
-    for (annotation in sort(grouped_annotations)) {
-      message("\nCreating plot for: ", annotation, lc_label)
-      safe_filename <- paste0(
-        "evo2_scores_",
-        tolower(gsub("[^A-Za-z0-9_]", "_", annotation)),
-        lc_suffix
-      )
-      tryCatch({
-        plot_group <- create_faceted_boxplot(
-          results_data, vep_filter = annotation,
-          long_context_only = lc_only, output_directory = output_dir
-        )
-        save_plot(plot_group, safe_filename,
-                  width = plot_width, height = plot_height,
-                  format = output_format, output_directory = output_dir)
-      }, error = function(e) {
-        message("Error creating plot for ", annotation, ": ", e$message)
-      })
-    }
   }
   
+  # VEP-level plots for long-context models
+  message("\nCreating VEP-level plots for long-context models...")
+  vep_subdir <- file.path(output_dir, "vep-level_predictions")
+  vep_annotations <- sort(unique(results_data$`Grouped Annotation`[!is.na(results_data$`Grouped Annotation`)]))
+  message("VEP annotations to plot: ", paste(vep_annotations, collapse = ", "))
+
+  for (vep_ann in vep_annotations) {
+    safe_name <- tolower(gsub("[^A-Za-z0-9_]", "_", vep_ann))
+    filename <- paste0("evo2_scores_vep_", safe_name, "_long_context")
+    message("Creating VEP-level plot for: ", vep_ann)
+    tryCatch({
+      plot_vep <- create_faceted_boxplot(
+        results_data,
+        vep_filter        = vep_ann,
+        long_context_only = TRUE,
+        max_context_size  = 524288
+      )
+      save_plot(plot_vep, filename,
+                width = plot_width, height = plot_height,
+                format = output_format, output_directory = vep_subdir)
+    }, error = function(e) {
+      message("Skipping ", vep_ann, ": ", e$message)
+    })
+  }
+
+  # Step 4: Build and save collated results table
+  message("\nStep 4: Building collated results table...")
+  collated <- build_collated_table(results_data)
+
+  # Join conservation scores (phastCons, phyloP, GERP) by MVP ID
+  message("Adding conservation scores from: ", conservation_file)
+  conservation <- read_csv(conservation_file, show_col_types = FALSE) %>%
+    select(`MVP ID`, phastCons100way, phyloP100way, GERP_RS)
+  collated <- collated %>%
+    left_join(conservation, by = "MVP ID")
+  n_with_conservation <- sum(!is.na(collated$phastCons100way))
+  message("Conservation scores joined: ", n_with_conservation, "/", nrow(collated),
+          " variants with phastCons100way")
+
+  collated_file <- file.path(output_dir, "evo2_scores_collated.csv")
+  write_csv(collated, collated_file)
+  message("Collated table saved to: ", collated_file)
+  message("Dimensions: ", nrow(collated), " rows x ", ncol(collated), " columns")
+
   message("\n=== Analysis Complete ===")
   message("All plots have been saved to: ", output_dir)
   
