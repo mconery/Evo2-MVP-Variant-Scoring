@@ -115,25 +115,41 @@ plot2_data <- timing %>%
     cp_size    == 2,
     chunk_size == 100
   ) %>%
-  arrange(context_bp) %>%
-  mutate(
-    context_label = factor(
-      context_bp_to_label(context_bp),
-      levels = context_bp_to_label(sort(unique(context_bp)))
-    )
-  )
+  arrange(context_bp)
 
-plot2 <- ggplot(plot2_data, aes(x = context_label, y = time_minutes, group = 1)) +
+plot2_breaks <- sort(unique(plot2_data$context_bp))
+
+plot2 <- ggplot(plot2_data, aes(x = context_bp, y = time_minutes, group = 1)) +
   geom_line(color = color_7b, linewidth = 1.2) +
   geom_point(color = color_7b, size = 3.5) +
+  scale_x_log10(
+    breaks = plot2_breaks,
+    labels = context_bp_to_label(plot2_breaks)
+  ) +
   labs(
-    title = "Context Length vs. Run Time\n(7b Arc Long-Context, TP=4, CP=2, Chunk Size = 100)",
-    x     = "Context Length",
+    title = "Run Time vs. Context Length\n(7b Arc Long-Context, TP=4, CP=2, Chunk Size = 100)",
+    x     = "Sequence Length",
     y     = "Run Time (minutes)"
   ) +
   timing_theme
 
 save_plot(plot2, "timing_context_length_vs_time")
+
+plot2_linear <- ggplot(plot2_data, aes(x = context_bp, y = time_minutes, group = 1)) +
+  geom_line(color = color_7b, linewidth = 1.2) +
+  geom_point(color = color_7b, size = 3.5) +
+  scale_x_continuous(
+    breaks = plot2_breaks,
+    labels = context_bp_to_label(plot2_breaks)
+  ) +
+  labs(
+    title = "Run Time vs. Context Length\n(7b Arc Long-Context, TP=4, CP=2, Chunk Size = 100)",
+    x     = "Sequence Length",
+    y     = "Run Time (minutes)"
+  ) +
+  timing_theme
+
+save_plot(plot2_linear, "timing_context_length_vs_time_linear")
 
 # ============================================================================
 # PLOT 3: Chunk Size vs. Time (both models)
@@ -161,14 +177,14 @@ plot3 <- ggplot(plot3_data, aes(x = chunk_size, y = time_minutes,
   geom_point(size = 3.5) +
   scale_color_manual(values = model_colors, labels = model_labels) +
   labs(
-    title = "Chunk Size vs. Run Time\n(TP=8, CP=1, 8,192 bp Context)",
+    title = "Run Time vs. Chunk Size\n(TP=8, CP=1, 8,192 bp Context)",
     x     = "Chunk Size",
     y     = "Run Time (minutes)",
     color = NULL
   ) +
   timing_theme +
   theme(
-    legend.position  = "right",
+    legend.position  = "bottom",
     legend.text      = element_text(size = 11)
   )
 
