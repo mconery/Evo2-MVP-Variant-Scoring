@@ -319,3 +319,70 @@ ggsave(forest_path, plot_forest, width = 12, height = 5, dpi = 300)
 message("Saved: ", forest_path)
 
 message("\n=== Done ===")
+
+# ============================================================================
+# STEP 8: PAIRWISE CORRELATION PLOTS
+# ============================================================================
+
+message("\nBuilding pairwise correlation plots...")
+
+pairs_def <- list(
+  list(x = "phastCons100way",  y = "phyloP100way",     x_lab = "phastCons (100-way vertebrate)", y_lab = "phyloP (100-way vertebrate)",             pair_type = "Conservation vs Conservation"),
+  list(x = "phastCons100way",  y = "GERP_RS",           x_lab = "phastCons (100-way vertebrate)", y_lab = "GERP++ RS",                               pair_type = "Conservation vs Conservation"),
+  list(x = "phyloP100way",     y = "GERP_RS",           x_lab = "phyloP (100-way vertebrate)",    y_lab = "GERP++ RS",                               pair_type = "Conservation vs Conservation"),
+  list(x = "phastCons100way",  y = "evo2_delta_score",  x_lab = "phastCons (100-way vertebrate)", y_lab = "Evo2 Delta Score\n(7b-arc-longcontext, 16384 bp)", pair_type = "Conservation vs Evo2"),
+  list(x = "phyloP100way",     y = "evo2_delta_score",  x_lab = "phyloP (100-way vertebrate)",    y_lab = "Evo2 Delta Score\n(7b-arc-longcontext, 16384 bp)", pair_type = "Conservation vs Evo2"),
+  list(x = "GERP_RS",          y = "evo2_delta_score",  x_lab = "GERP++ RS",                      y_lab = "Evo2 Delta Score\n(7b-arc-longcontext, 16384 bp)", pair_type = "Conservation vs Evo2")
+)
+
+make_corr_panel <- function(pair) {
+  x_col <- pair$x
+  y_col <- pair$y
+
+  ct    <- cor.test(df_complete[[x_col]], df_complete[[y_col]], method = "pearson")
+  r_val <- sprintf("r = %.3f", ct$estimate)
+  p_val <- format_pval(ct$p.value)
+  annot <- paste0(r_val, "\n", p_val)
+
+  ggplot(df_complete,
+         aes(x = .data[[x_col]], y = .data[[y_col]], color = class)) +
+    geom_point(alpha = 0.4, size = 1.5) +
+    geom_smooth(method = "lm", se = TRUE, color = "black", linewidth = 0.8) +
+    annotate("text",
+             x = -Inf, y = Inf,
+             label = annot,
+             hjust = -0.1, vjust = 1.4,
+             size = 5, fontface = "bold",
+             lineheight = 0.9) +
+    scale_color_manual(
+      values = c("Low PIP" = col_low, "High PIP" = col_high),
+      name   = NULL
+    ) +
+    labs(x = pair$x_lab, y = pair$y_lab) +
+    theme_mvp() +
+    theme(
+      axis.text.x     = element_text(angle = 0, hjust = 0.5),
+      legend.position = "bottom",
+      legend.text     = element_text(size = 12)
+    )
+}
+
+corr_panels <- map(pairs_def, make_corr_panel)
+
+plot_corr <- wrap_plots(corr_panels, ncol = 3, nrow = 2, guides = "collect") +
+  plot_annotation(
+    title    = "Pairwise Correlations: Conservation Metrics & Evo2 Score",
+    subtitle = "Row 1: Conservation vs Conservation    |    Row 2: Conservation vs Evo2",
+    theme    = theme(
+      plot.title    = element_text(hjust = 0.5, face = "bold", size = 18),
+      plot.subtitle = element_text(hjust = 0.5, size = 13),
+      legend.position = "bottom"
+    )
+  ) &
+  theme(legend.position = "bottom")
+
+corr_path <- file.path(output_dir, "conservation_pairwise_correlations.png")
+ggsave(corr_path, plot_corr, width = 14, height = 10, dpi = 300)
+message("Saved: ", corr_path)
+
+message("\n=== All Done ===")
