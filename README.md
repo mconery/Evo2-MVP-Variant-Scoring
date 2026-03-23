@@ -143,20 +143,3 @@ Produces three plots: parallelism strategy comparison, run time vs. context leng
 | `conservation_regression_plots.R` | 3 PNG files | PNG | Regression panels, forest plot, pairwise correlation plots |
 | `timing_variants_test.py` | `timing_scores.*.csv` | CSV | Scored variants with timing metadata |
 | `timing_plot_script.R` | 3 PNG files | PNG | Parallelism, context length, chunk size timing plots |
-
-## Key Parameters
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `--mode` | — | `prepare` or `process` (required) |
-| `--ctx` | 1,000,000 bp | Genomic context window size in base pairs |
-| `--chunk-size` | 16 | Number of variants per inference batch |
-| `--model` | `7b` | Evo2 model size: `1b`, `7b`, `40b_arc_longcontext` |
-| `--tensor-parallel-size` | 1 | Number of GPUs for tensor parallelism |
-| `--context-parallel-size` | 1 | Number of GPUs for context parallelism |
-| `--chunk-start` | 0 | Starting variant index (for chunked/distributed runs) |
-| `--chunk-end` | — | Ending variant index (required for `process` mode) |
-| `--variants` | — | Path to input variant CSV |
-| `--fasta` | — | Path to reference genome FASTA |
-| `--out` | — | Path for output CSV |
-| `--checkpoint-dir` | — | Directory for Evo2 model checkpoints |
