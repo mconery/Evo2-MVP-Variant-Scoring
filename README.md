@@ -80,7 +80,7 @@ Filters the MVP dataset for EUR-population variants and matches high PIP (≥ 0.
 python filter_and_match_variants.py -i Data_S1.xlsx -o matched_variants.csv
 ```
 
-### Step 2 — Fetch conservation scores (optional)
+### Step 2 — Fetch conservation scores
 Retrieves phastCons100way, phyloP100way, and GERP RS scores for each variant. Uses myVariant.info as the primary source with UCSC bigWig tracks as a fallback.
 
 ```bash
