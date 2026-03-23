@@ -32,14 +32,11 @@ Evaluates whether Evo2 delta scores can differentiate high-confidence causal var
 ### MVP Timing Test
 Benchmarks the computational efficiency of Evo2 inference across different configurations: model size (7B vs. 40B), context window length (8 Kbp–512 Kbp), batch/chunk size (10–100 variants), and GPU parallelism strategy (tensor parallelism × context parallelism combinations).
 
-## Data Requirements
-
+## Data Inputs
 | File | Description | Source |
 |------|-------------|--------|
 | `Data_S1.xlsx` | MVP fine-mapping summary statistics (EUR population) | [Dryad](https://doi.org/10.5061/dryad.zgmsbcck4) |
 | GRCh38 FASTA + index | Reference genome (`.fa` + `.fai`) | NCBI/Ensembl |
-
-The input variant file (`Data_S1.xlsx`) requires columns: MVP ID, Population, Overall PIP, EAF, P-Value, VEP Annotation, CHR, BP38, REF, ALT.
 
 ## Environment and Dependencies
 
