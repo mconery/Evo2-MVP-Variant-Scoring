@@ -62,6 +62,7 @@ tidyverse, ggplot2, ggpubr, scales, patchwork
 - Apptainer/Singularity container runtime
 
 ### Required Environment Variables
+To use the code in this repository, you will likely need to update the file following locations embedded in the scripts to ones suited to your application:
 ```bash
 HF_HOME              # Hugging Face model cache directory
 NEMO_CACHE_DIR       # NVIDIA NeMo cache directory
