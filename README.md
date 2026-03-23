@@ -36,9 +36,8 @@ Benchmarks the computational efficiency of Evo2 inference across different confi
 
 | File | Description | Source |
 |------|-------------|--------|
-| `Data_S1.xlsx` | MVP fine-mapping summary statistics (EUR population) | VA Million Veteran Program |
+| `Data_S1.xlsx` | MVP fine-mapping summary statistics (EUR population) | [Dryad](https://doi.org/10.5061/dryad.zgmsbcck4) |
 | GRCh38 FASTA + index | Reference genome (`.fa` + `.fai`) | NCBI/Ensembl |
-| `matched_variants.csv` | Output of `filter_and_match_variants.py` | Generated in Step 1 |
 
 The input variant file (`Data_S1.xlsx`) requires columns: MVP ID, Population, Overall PIP, EAF, P-Value, VEP Annotation, CHR, BP38, REF, ALT.
 
