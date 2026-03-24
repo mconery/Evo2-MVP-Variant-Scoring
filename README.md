@@ -1,4 +1,4 @@
-# Evo2 TopMed Variant Scoring
+# Evo2 MVP Variant Scoring
 
 A pipeline for scoring genetic variants from the Million Veteran Program (MVP) fine-mapping dataset using the [Evo2](https://github.com/evo-design/evo) genomic foundation model. The pipeline computes Evo2 delta scores (reference vs. variant log-likelihood differences) and benchmarks them against established conservation metrics (phastCons, phyloP, GERP).
 
