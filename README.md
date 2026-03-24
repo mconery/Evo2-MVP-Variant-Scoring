@@ -5,10 +5,10 @@ A pipeline for scoring genetic variants from the Million Veteran Program (MVP) f
 ## Repository Structure
 
 ```
-Evo2-TopMed-Variant-Scoring/
+Evo2-MVP-Variant-Scoring/
 ├── MVP_Low-High_Variant_Test/       # Discriminative performance experiment
 │   ├── mvp_variants_test.py         # Main Evo2 scoring script (prepare/process modes)
-│   ├── filter_and_match_variants.py # Filter MVP data and match high/low PIP variants
+│   ├── filter_and_match_variants.py # Filter MVP data and match high/low PIP variantstop
 │   ├── get_conservation_scores.py   # Fetch phastCons, phyloP, GERP scores via REST APIs
 │   ├── mvp_plot_script.R            # Faceted boxplots of Evo2 scores by model/context
 │   ├── conservation_regression_plots.R  # Logistic regression and forest plots
