@@ -609,11 +609,12 @@ cor_log_all_label <- paste0("r = ", sprintf("%.3f", cor_results_log$r[1]),
 plot_maf_log_all <- ggplot(df_maf_log, aes(x = maf, y = log10_evo2)) +
   geom_point(alpha = 0.35, size = 1.2, color = col_high) +
   geom_smooth(method = "lm", se = TRUE, color = "black", linewidth = 0.9) +
+  scale_x_log10() +
   annotate("text", x = -Inf, y = -Inf, label = cor_log_all_label,
            hjust = -0.05, vjust = -0.5, size = 4, fontface = "bold") +
   labs(
     title = "All Variants",
-    x     = "Minor Allele Frequency",
+    x     = expression(log[10]("MAF")),
     y     = expression(log[10]("|Evo2 Delta Score|"))
   ) +
   theme_mvp() +
@@ -639,6 +640,7 @@ cor_facet_log_df <- cor_results_log %>%
 plot_maf_log_facets <- ggplot(df_facets_log, aes(x = maf, y = log10_evo2)) +
   geom_point(alpha = 0.35, size = 1.0, color = col_high) +
   geom_smooth(method = "lm", se = TRUE, color = "black", linewidth = 0.9) +
+  scale_x_log10() +
   geom_text(data = cor_facet_log_df,
             aes(x = -Inf, y = -Inf, label = label),
             hjust = -0.05, vjust = -0.5,
@@ -647,7 +649,7 @@ plot_maf_log_facets <- ggplot(df_facets_log, aes(x = maf, y = log10_evo2)) +
   facet_wrap(~subset, ncol = 2) +
   labs(
     title = "Variant Subsets",
-    x     = "Minor Allele Frequency",
+    x     = expression(log[10]("MAF")),
     y     = expression(log[10]("|Evo2 Delta Score|"))
   ) +
   theme_mvp() +
@@ -668,5 +670,116 @@ plot_maf_log <- plot_maf_log_all + plot_maf_log_facets +
 maf_log_path <- file.path(output_dir, "conservation_maf_log10evo2_correlation.png")
 ggsave(maf_log_path, plot_maf_log, width = 16, height = 6, dpi = 300)
 message("Saved: ", maf_log_path)
+
+# ============================================================================
+# STEP 11: EVO2 LOGISTIC REGRESSION — WITH AND WITHOUT MAF COVARIATE
+# ============================================================================
+
+message("\n--- Evo2 logistic regression: with and without MAF covariate ---")
+
+# --- 11a: Fit models ---
+fit_evo2_only <- glm(pip_high ~ scale(evo2_delta_score),
+                     data = df_maf, family = binomial)
+fit_evo2_maf  <- glm(pip_high ~ scale(evo2_delta_score) + scale(maf),
+                     data = df_maf, family = binomial)
+
+# --- 11b: Extract results ---
+extract_coefs <- function(fit, model_label, predictors_keep) {
+  coefs <- summary(fit)$coefficients
+  cis   <- confint.default(fit)
+  rows  <- rownames(coefs)[rownames(coefs) %in% predictors_keep]
+  tibble(
+    raw_name = rows,
+    beta     = coefs[rows, "Estimate"],
+    or       = exp(coefs[rows, "Estimate"]),
+    ci_lo    = exp(cis[rows, 1]),
+    ci_hi    = exp(cis[rows, 2]),
+    p_value  = coefs[rows, "Pr(>|z|)"],
+    p_label  = format_pval(p_value),
+    stars    = sig_stars(p_value),
+    model    = model_label
+  )
+}
+
+maf_forest_df <- bind_rows(
+  extract_coefs(fit_evo2_only,
+                "Evo2 only",
+                "scale(evo2_delta_score)"),
+  extract_coefs(fit_evo2_maf,
+                "Evo2 + MAF",
+                c("scale(evo2_delta_score)", "scale(maf)"))
+) %>%
+  mutate(
+    label = case_when(
+      raw_name == "scale(evo2_delta_score)" & model == "Evo2 only"  ~ "Evo2 \u2014 without MAF",
+      raw_name == "scale(evo2_delta_score)" & model == "Evo2 + MAF" ~ "Evo2 \u2014 with MAF",
+      raw_name == "scale(maf)"                                       ~ "MAF \u2014 with Evo2"
+    ),
+    label = factor(label, levels = c("Evo2 \u2014 without MAF",
+                                     "Evo2 \u2014 with MAF",
+                                     "MAF \u2014 with Evo2"))
+  )
+
+walk(seq_len(nrow(maf_forest_df)), function(i) {
+  r <- maf_forest_df[i, ]
+  message(sprintf("  %-35s  OR=%.3f [%.3f, %.3f]  %s  %s",
+                  r$label, r$or, r$ci_lo, r$ci_hi, r$p_label, r$stars))
+})
+
+# --- 11c: Forest plot base ---
+plot_maf_forest_base <- ggplot(maf_forest_df,
+                               aes(x = or, y = label, color = model)) +
+  geom_vline(xintercept = 1, linetype = "dashed", color = "grey50", linewidth = 0.8) +
+  geom_errorbarh(aes(xmin = ci_lo, xmax = ci_hi),
+                 height = 0.2, linewidth = 0.8) +
+  geom_point(size = 3.5) +
+  scale_x_log10() +
+  scale_color_manual(
+    values = c("Evo2 only" = col_high, "Evo2 + MAF" = col_low),
+    name   = NULL
+  ) +
+  labs(
+    title = "Evo2 Score: High vs Low PIP\n(Standardised ORs, 95% CI \u2014 with and without MAF covariate)",
+    x     = "Odds Ratio (95% CI, standardised predictors)",
+    y     = NULL
+  ) +
+  theme_bw() +
+  theme(
+    plot.title       = element_text(hjust = 0.5, face = "bold", size = 18),
+    plot.margin      = margin(5, 2, 5, 5, "mm"),
+    axis.text        = element_text(size = 12),
+    axis.text.x      = element_text(angle = 45, hjust = 1),
+    axis.text.y      = element_text(size = 12),
+    axis.title       = element_text(size = 13),
+    legend.position  = "bottom",
+    legend.text      = element_text(size = 12),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+
+# --- 11d: Side text panel ---
+maf_side_df <- maf_forest_df %>%
+  mutate(side_label = paste0("\u03b2 = ", sprintf("%+.3f", beta), "\n",
+                             p_label, "  ", stars))
+
+plot_maf_side <- ggplot(maf_side_df, aes(x = 0, y = label)) +
+  geom_text(aes(label = side_label),
+            hjust = 0, size = 4.5, fontface = "bold", lineheight = 0.9) +
+  scale_x_continuous(limits = c(0, 1), expand = c(0, 0)) +
+  labs(title = "", x = NULL, y = NULL) +
+  theme_void() +
+  theme(
+    plot.margin = margin(5, 5, 5, 2, "mm"),
+    axis.text   = element_blank(),
+    axis.ticks  = element_blank()
+  )
+
+# --- 11e: Compose and save ---
+plot_maf_forest <- plot_maf_forest_base + plot_maf_side +
+  plot_layout(widths = c(3, 1))
+
+maf_forest_path <- file.path(output_dir, "conservation_maf_regression_forest.png")
+ggsave(maf_forest_path, plot_maf_forest, width = 12, height = 4, dpi = 300)
+message("Saved: ", maf_forest_path)
 
 message("\n=== All Done ===")
