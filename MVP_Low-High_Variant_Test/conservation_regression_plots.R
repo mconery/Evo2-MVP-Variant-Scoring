@@ -14,6 +14,7 @@ library(tidyverse)
 library(ggplot2)
 library(scales)
 library(patchwork)
+library(car)
 
 # ============================================================================
 # CONFIGURATION
@@ -168,6 +169,61 @@ walk(seq_len(nrow(joint_results)), function(i) {
 })
 
 # ============================================================================
+# STEP 3b: VARIANCE INFLATION FACTORS (Joint Model)
+# ============================================================================
+
+message("\n--- Variance Inflation Factors (joint model) ---")
+
+vif_vals <- car::vif(fit_joint)   # named numeric vector
+
+# Build tidy VIF table — strip scale() wrapper from names, map to labels
+vif_df <- tibble(
+  predictor = names(predictors),
+  label     = map_chr(predictors, "label"),
+  vif       = as.numeric(vif_vals),
+  var_type  = if_else(predictor == "evo2_delta_score", "Evo2", "Conservation")
+)
+
+walk(seq_len(nrow(vif_df)), function(i) {
+  message(sprintf("  %-30s  VIF = %.3f", vif_df$predictor[i], vif_df$vif[i]))
+})
+
+# --- VIF bar chart ---
+vif_df <- vif_df %>%
+  mutate(
+    label = str_replace(label, " \\(", "\n("),   # wrap at opening parenthesis,
+    label = str_replace(label, "7b-arc-longcontext", "7b long-context"),
+    label = factor(label, levels = label)
+  )
+
+plot_vif <- ggplot(vif_df, aes(x = label, y = vif, fill = var_type)) +
+  geom_col(width = 0.6, color = "white") +
+  geom_hline(yintercept = 5,  linetype = "dashed", color = "orange",    linewidth = 0.8) +
+  geom_hline(yintercept = 10, linetype = "dashed", color = "firebrick", linewidth = 0.8) +
+  geom_text(aes(label = sprintf("%.2f", vif)),
+            vjust = -0.4, size = 4, fontface = "bold") +
+  annotate("text", x = Inf, y = 5,  label = "VIF = 5",  hjust = 1.1, vjust = -0.4,
+           color = "orange",    size = 3.5) +
+  annotate("text", x = Inf, y = 10, label = "VIF = 10", hjust = 1.1, vjust = -0.4,
+           color = "firebrick", size = 3.5) +
+  scale_fill_manual(
+    values = c("Conservation" = col_low, "Evo2" = col_high),
+    name   = NULL,
+    labels = c("Conservation metric", "Evo2 model")
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  labs(
+    title = "Variance Inflation Factors \u2014 Joint Logistic Regression",
+    x     = NULL,
+    y     = "VIF"
+  ) +
+  theme_mvp() +
+  theme(
+    legend.position = "bottom",
+    axis.text.x     = element_text(angle = 0, hjust = 0.5)
+  )
+
+# ============================================================================
 # STEP 4: SUMMARY TABLE
 # ============================================================================
 
@@ -317,6 +373,10 @@ message("Saved: ", violin_path)
 forest_path <- file.path(output_dir, "conservation_joint_regression_forest.png")
 ggsave(forest_path, plot_forest, width = 12, height = 5, dpi = 300)
 message("Saved: ", forest_path)
+
+vif_path <- file.path(output_dir, "conservation_vif_barplot.png")
+ggsave(vif_path, plot_vif, width = 8, height = 5, dpi = 300)
+message("Saved: ", vif_path)
 
 message("\n=== Done ===")
 
