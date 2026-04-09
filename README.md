@@ -52,7 +52,7 @@ bionemo  # NVIDIA BioNeMo (provides Evo2 model loading and inference)
 
 ### R
 ```r
-tidyverse, ggplot2, ggpubr, scales, patchwork
+tidyverse, ggplot2, ggpubr, scales, patchwork, car
 ```
 
 ### Hardware and HPC
@@ -140,6 +140,6 @@ Produces three plots: parallelism strategy comparison, run time vs. context leng
 | `get_conservation_scores.py` | `MVP_conservation_scores.csv` | CSV | phastCons, phyloP, GERP scores per variant |
 | `mvp_variants_test.py` | `MVP_variant_scores.*.csv` | CSV | All input columns + `ref_log_probs`, `var_log_probs`, `evo2_delta_score`, `class` |
 | `mvp_plot_script.R` | Multiple PNGs + `collated_results.csv` | PNG/CSV | Faceted boxplots; collated scores across all model/context runs |
-| `conservation_regression_plots.R` | 3 PNG files | PNG | Regression panels, forest plot, pairwise correlation plots |
+| `conservation_regression_plots.R` | 4 PNG files | PNG | Regression panels, forest plot, pairwise correlation plots, VIF bar chart |
 | `timing_variants_test.py` | `timing_scores.*.csv` | CSV | Scored variants with timing metadata |
 | `timing_plot_script.R` | 3 PNG files | PNG | Parallelism, context length, chunk size timing plots |
