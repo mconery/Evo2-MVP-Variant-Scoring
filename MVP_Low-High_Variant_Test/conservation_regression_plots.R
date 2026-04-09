@@ -79,7 +79,8 @@ df <- conservation %>%
     pip_high  = as.integer(class == "High PIP")
   ) %>%
   select(`MVP ID`, class, pip_high,
-         phastCons100way, phyloP100way, GERP_RS, evo2_delta_score)
+         phastCons100way, phyloP100way, GERP_RS, evo2_delta_score,
+         `EAF Population`, `VEP Annotation`)
 
 message("Merged rows: ", nrow(df))
 message("Class distribution: ", paste(names(table(df$class)), table(df$class), sep = "=", collapse = ", "))
@@ -87,6 +88,27 @@ message("Class distribution: ", paste(names(table(df$class)), table(df$class), s
 # Complete cases across all four predictors
 df_complete <- df %>% drop_na(phastCons100way, phyloP100way, GERP_RS, evo2_delta_score)
 message("Complete cases (all 4 predictors present): ", nrow(df_complete))
+
+# Coding VEP consequences (standard Ensembl/VEP exonic terms)
+coding_consequences <- c(
+  "missense_variant", "synonymous_variant", "stop_gained", "stop_lost",
+  "start_lost", "frameshift_variant", "inframe_insertion", "inframe_deletion",
+  "splice_donor_variant", "splice_acceptor_variant"
+)
+
+df_maf <- df %>%
+  mutate(
+    maf          = pmin(`EAF Population`, 1 - `EAF Population`),
+    variant_type = if_else(`VEP Annotation` %in% coding_consequences,
+                           "Coding", "Non-coding"),
+    log10_evo2   = if_else(evo2_delta_score != 0,
+                           log10(abs(evo2_delta_score)), NA_real_)
+  ) %>%
+  drop_na(maf, evo2_delta_score)
+
+message("MAF analysis dataset: ", nrow(df_maf), " variants")
+message("VEP annotation breakdown:\n",
+        paste(capture.output(print(table(df_maf$variant_type))), collapse = "\n"))
 
 # ============================================================================
 # STEP 2: INDIVIDUAL LOGISTIC REGRESSIONS
@@ -444,5 +466,207 @@ plot_corr <- wrap_plots(corr_panels, ncol = 3, nrow = 2, guides = "collect") +
 corr_path <- file.path(output_dir, "conservation_pairwise_correlations.png")
 ggsave(corr_path, plot_corr, width = 14, height = 10, dpi = 300)
 message("Saved: ", corr_path)
+
+# ============================================================================
+# STEP 9: MAF vs EVO2 SCORE CORRELATION
+# ============================================================================
+
+message("\nBuilding MAF vs Evo2 correlation plot...")
+
+# --- 9a: Pearson correlations for each subset ---
+run_cor <- function(data, label) {
+  ct <- cor.test(data$maf, data$evo2_delta_score, method = "pearson")
+  tibble(
+    subset = label,
+    r      = ct$estimate,
+    p      = ct$p.value,
+    n      = nrow(data)
+  )
+}
+
+cor_results <- bind_rows(
+  run_cor(df_maf,                                       "All variants"),
+  run_cor(filter(df_maf, class        == "High PIP"),   "High PIP"),
+  run_cor(filter(df_maf, class        == "Low PIP"),    "Low PIP"),
+  run_cor(filter(df_maf, variant_type == "Coding"),     "Coding"),
+  run_cor(filter(df_maf, variant_type == "Non-coding"), "Non-coding")
+)
+
+message("\n--- MAF vs Evo2 Pearson correlations ---")
+walk(seq_len(nrow(cor_results)), function(i) {
+  r <- cor_results[i, ]
+  message(sprintf("  %-20s  r = %+.3f  %s  n = %d",
+                  r$subset, r$r, format_pval(r$p), r$n))
+})
+
+# --- 9b: Left panel — All variants ---
+cor_all_label <- paste0("r = ", sprintf("%.3f", cor_results$r[1]),
+                        "     ", format_pval(cor_results$p[1]),
+                        "     n = ", cor_results$n[1])
+
+plot_maf_all <- ggplot(df_maf, aes(x = maf, y = evo2_delta_score)) +
+  geom_point(alpha = 0.35, size = 1.2, color = col_high) +
+  geom_smooth(method = "lm", se = TRUE, color = "black", linewidth = 0.9) +
+  annotate("text", x = -Inf, y = -Inf, label = cor_all_label,
+           hjust = -0.05, vjust = -0.5, size = 4, fontface = "bold") +
+  labs(
+    title = "All Variants",
+    x     = "Minor Allele Frequency",
+    y     = "Evo2 Delta Score"
+  ) +
+  theme_mvp() +
+  theme(legend.position = "none")
+
+# --- 9c: Right panel — 2x2 faceted scatter ---
+facet_order <- c("High PIP", "Low PIP", "Coding", "Non-coding")
+
+df_facets <- bind_rows(
+  df_maf %>% filter(class        == "High PIP")    %>% mutate(subset = "High PIP"),
+  df_maf %>% filter(class        == "Low PIP")     %>% mutate(subset = "Low PIP"),
+  df_maf %>% filter(variant_type == "Coding")      %>% mutate(subset = "Coding"),
+  df_maf %>% filter(variant_type == "Non-coding")  %>% mutate(subset = "Non-coding")
+) %>%
+  mutate(subset = factor(subset, levels = facet_order))
+
+cor_facet_df <- cor_results %>%
+  filter(subset %in% facet_order) %>%
+  mutate(
+    subset = factor(subset, levels = facet_order),
+    label  = paste0("r = ", sprintf("%.3f", r), "     ", format_pval(p),
+                    "     n = ", n)
+  )
+
+plot_maf_facets <- ggplot(df_facets, aes(x = maf, y = evo2_delta_score)) +
+  geom_point(alpha = 0.35, size = 1.0, color = col_high) +
+  geom_smooth(method = "lm", se = TRUE, color = "black", linewidth = 0.9) +
+  geom_text(data = cor_facet_df,
+            aes(x = -Inf, y = -Inf, label = label),
+            hjust = -0.05, vjust = -0.5,
+            size = 3.5, color = "black", fontface = "bold",
+            inherit.aes = FALSE) +
+  facet_wrap(~subset, ncol = 2) +
+  labs(
+    title = "Variant Subsets",
+    x     = "Minor Allele Frequency",
+    y     = "Evo2 Delta Score"
+  ) +
+  theme_mvp() +
+  theme(
+    legend.position  = "none",
+    strip.text       = element_text(face = "bold", size = 12),
+    strip.background = element_blank()
+  )
+
+# --- 9d: Combine panels with patchwork ---
+plot_maf <- plot_maf_all + plot_maf_facets +
+  plot_layout(ncol = 2, widths = c(1, 2)) +
+  plot_annotation(
+    title = "MAF vs Evo2 Delta Score Correlation",
+    theme = theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 18))
+  )
+
+maf_path <- file.path(output_dir, "conservation_maf_evo2_correlation.png")
+ggsave(maf_path, plot_maf, width = 16, height = 6, dpi = 300)
+message("Saved: ", maf_path)
+
+# ============================================================================
+# STEP 10: MAF vs LOG10(|EVO2 DELTA SCORE|) CORRELATION
+# ============================================================================
+
+message("\nBuilding MAF vs log10(|Evo2 delta score|) correlation plot...")
+
+run_cor_y <- function(data, label, y_col) {
+  y_col <- rlang::ensym(y_col)
+  ct <- cor.test(data$maf, dplyr::pull(data, !!y_col), method = "pearson")
+  tibble(subset = label, r = ct$estimate, p = ct$p.value, n = nrow(data))
+}
+
+df_maf_log <- df_maf %>% drop_na(log10_evo2)
+message("log10 analysis dataset: ", nrow(df_maf_log),
+        " variants (", nrow(df_maf) - nrow(df_maf_log), " zeros dropped)")
+
+# --- 10a: Pearson correlations for each subset ---
+cor_results_log <- bind_rows(
+  run_cor_y(df_maf_log,                                       "All variants", log10_evo2),
+  run_cor_y(filter(df_maf_log, class        == "High PIP"),   "High PIP",     log10_evo2),
+  run_cor_y(filter(df_maf_log, class        == "Low PIP"),    "Low PIP",      log10_evo2),
+  run_cor_y(filter(df_maf_log, variant_type == "Coding"),     "Coding",       log10_evo2),
+  run_cor_y(filter(df_maf_log, variant_type == "Non-coding"), "Non-coding",   log10_evo2)
+)
+
+message("\n--- MAF vs log10(|Evo2|) Pearson correlations ---")
+walk(seq_len(nrow(cor_results_log)), function(i) {
+  r <- cor_results_log[i, ]
+  message(sprintf("  %-20s  r = %+.3f  %s  n = %d",
+                  r$subset, r$r, format_pval(r$p), r$n))
+})
+
+# --- 10b: Left panel — All variants ---
+cor_log_all_label <- paste0("r = ", sprintf("%.3f", cor_results_log$r[1]),
+                            "     ", format_pval(cor_results_log$p[1]),
+                            "     n = ", cor_results_log$n[1])
+
+plot_maf_log_all <- ggplot(df_maf_log, aes(x = maf, y = log10_evo2)) +
+  geom_point(alpha = 0.35, size = 1.2, color = col_high) +
+  geom_smooth(method = "lm", se = TRUE, color = "black", linewidth = 0.9) +
+  annotate("text", x = -Inf, y = -Inf, label = cor_log_all_label,
+           hjust = -0.05, vjust = -0.5, size = 4, fontface = "bold") +
+  labs(
+    title = "All Variants",
+    x     = "Minor Allele Frequency",
+    y     = expression(log[10]("|Evo2 Delta Score|"))
+  ) +
+  theme_mvp() +
+  theme(legend.position = "none")
+
+# --- 10c: Right panel — 2x2 faceted scatter ---
+df_facets_log <- bind_rows(
+  df_maf_log %>% filter(class        == "High PIP")    %>% mutate(subset = "High PIP"),
+  df_maf_log %>% filter(class        == "Low PIP")     %>% mutate(subset = "Low PIP"),
+  df_maf_log %>% filter(variant_type == "Coding")      %>% mutate(subset = "Coding"),
+  df_maf_log %>% filter(variant_type == "Non-coding")  %>% mutate(subset = "Non-coding")
+) %>%
+  mutate(subset = factor(subset, levels = facet_order))
+
+cor_facet_log_df <- cor_results_log %>%
+  filter(subset %in% facet_order) %>%
+  mutate(
+    subset = factor(subset, levels = facet_order),
+    label  = paste0("r = ", sprintf("%.3f", r), "     ", format_pval(p),
+                    "     n = ", n)
+  )
+
+plot_maf_log_facets <- ggplot(df_facets_log, aes(x = maf, y = log10_evo2)) +
+  geom_point(alpha = 0.35, size = 1.0, color = col_high) +
+  geom_smooth(method = "lm", se = TRUE, color = "black", linewidth = 0.9) +
+  geom_text(data = cor_facet_log_df,
+            aes(x = -Inf, y = -Inf, label = label),
+            hjust = -0.05, vjust = -0.5,
+            size = 3.5, color = "black", fontface = "bold",
+            inherit.aes = FALSE) +
+  facet_wrap(~subset, ncol = 2) +
+  labs(
+    title = "Variant Subsets",
+    x     = "Minor Allele Frequency",
+    y     = expression(log[10]("|Evo2 Delta Score|"))
+  ) +
+  theme_mvp() +
+  theme(
+    legend.position  = "none",
+    strip.text       = element_text(face = "bold", size = 12),
+    strip.background = element_blank()
+  )
+
+# --- 10d: Combine panels with patchwork ---
+plot_maf_log <- plot_maf_log_all + plot_maf_log_facets +
+  plot_layout(ncol = 2, widths = c(1, 2)) +
+  plot_annotation(
+    title = expression("MAF vs " * log[10]("|Evo2 Delta Score|") * " Correlation"),
+    theme = theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 18))
+  )
+
+maf_log_path <- file.path(output_dir, "conservation_maf_log10evo2_correlation.png")
+ggsave(maf_log_path, plot_maf_log, width = 16, height = 6, dpi = 300)
+message("Saved: ", maf_log_path)
 
 message("\n=== All Done ===")
