@@ -176,6 +176,160 @@ calculate_wilcoxon_pvalues <- function(data) {
   return(pvalues)
 }
 
+#' Calculate percentage difference in median scores between High and Low PIP
+#'
+#' @param data Data frame with results
+#' @return Data frame with median_high, median_low, pct_label per model_size/context_size
+calculate_median_pct_diff <- function(data) {
+  data %>%
+    group_by(model_size, context_size) %>%
+    summarise(
+      median_high = median(evo2_delta_score[class == "High PIP"], na.rm = TRUE),
+      median_low  = median(evo2_delta_score[class == "Low PIP"],  na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      pct_label = case_when(
+        is.na(median_high) | is.na(median_low) ~ "Δmedian: N/A",
+        abs(median_low) < 1e-10               ~ "Δmedian: N/A",
+        TRUE ~ sprintf("Δmedian: %+.0f%%",
+                       (median_high - median_low) / abs(median_low) * 100)
+      )
+    )
+}
+
+#' Compute ROC curve data per model/context facet
+#'
+#' High PIP is the positive class; lower evo2_delta_score predicts positive.
+#'
+#' @param data Data frame with model_size_factor, context_size_factor, class, evo2_delta_score
+#' @return Long-format data frame with fpr, tpr, auc_roc, auc_label per facet
+compute_roc_data <- function(data) {
+  groups <- data %>% distinct(model_size_factor, context_size_factor)
+  result_list <- vector("list", nrow(groups))
+
+  for (i in seq_len(nrow(groups))) {
+    ms_f <- as.character(groups$model_size_factor[i])
+    cs_f <- as.character(groups$context_size_factor[i])
+
+    grp <- data %>%
+      filter(as.character(model_size_factor) == ms_f,
+             as.character(context_size_factor) == cs_f)
+
+    n       <- nrow(grp)
+    classes <- unique(grp$class)
+
+    degenerate <- n < 5 || length(classes) < 2
+    if (!degenerate) {
+      ord   <- order(grp$evo2_delta_score)
+      y     <- as.integer(grp$class[ord] == "High PIP")
+      n_pos <- sum(y)
+      n_neg <- n - n_pos
+      degenerate <- n_pos == 0 || n_neg == 0
+    }
+
+    if (degenerate) {
+      result_list[[i]] <- data.frame(
+        model_size_factor = ms_f, context_size_factor = cs_f,
+        fpr = NA_real_, tpr = NA_real_,
+        auc_roc = NA_real_, auc_label = "AUC: N/A",
+        stringsAsFactors = FALSE
+      )
+      next
+    }
+
+    tpr_vals <- cumsum(y) / n_pos
+    fpr_vals <- cumsum(1L - y) / n_neg
+
+    # Deduplicate at tied-score boundaries
+    boundary <- c(diff(grp$evo2_delta_score[ord]) != 0, TRUE)
+    tpr_vals <- tpr_vals[boundary]
+    fpr_vals <- fpr_vals[boundary]
+
+    fpr_vals <- c(0, fpr_vals)
+    tpr_vals <- c(0, tpr_vals)
+
+    auc_roc <- sum(diff(fpr_vals) *
+                   (tpr_vals[-1] + tpr_vals[-length(tpr_vals)]) / 2)
+
+    result_list[[i]] <- data.frame(
+      model_size_factor = ms_f, context_size_factor = cs_f,
+      fpr = fpr_vals, tpr = tpr_vals,
+      auc_roc = auc_roc,
+      auc_label = sprintf("AUC = %.2f", auc_roc),
+      stringsAsFactors = FALSE
+    )
+  }
+
+  out <- bind_rows(result_list)
+  out$model_size_factor   <- factor(out$model_size_factor,
+                                    levels = levels(data$model_size_factor))
+  out$context_size_factor <- factor(out$context_size_factor,
+                                    levels = levels(data$context_size_factor))
+  out
+}
+
+#' Compute precision-recall curve data per model/context facet
+#'
+#' High PIP is the positive class; lower evo2_delta_score predicts positive.
+#'
+#' @param data Data frame with model_size_factor, context_size_factor, class, evo2_delta_score
+#' @return Long-format data frame with recall, precision, baseline, auc_pr, auc_label per facet
+compute_pr_data <- function(data) {
+  groups <- data %>% distinct(model_size_factor, context_size_factor)
+  result_list <- vector("list", nrow(groups))
+
+  for (i in seq_len(nrow(groups))) {
+    ms_f <- as.character(groups$model_size_factor[i])
+    cs_f <- as.character(groups$context_size_factor[i])
+
+    grp <- data %>%
+      filter(as.character(model_size_factor) == ms_f,
+             as.character(context_size_factor) == cs_f)
+
+    n       <- nrow(grp)
+    classes <- unique(grp$class)
+    n_pos   <- sum(grp$class == "High PIP")
+
+    if (n < 5 || length(classes) < 2 || n_pos == 0) {
+      result_list[[i]] <- data.frame(
+        model_size_factor = ms_f, context_size_factor = cs_f,
+        recall = NA_real_, precision = NA_real_,
+        baseline = NA_real_, auc_pr = NA_real_, auc_label = "AUC: N/A",
+        stringsAsFactors = FALSE
+      )
+      next
+    }
+
+    ord            <- order(grp$evo2_delta_score)
+    y              <- as.integer(grp$class[ord] == "High PIP")
+    recall_vals    <- cumsum(y) / n_pos
+    precision_vals <- cumsum(y) / seq_len(n)
+
+    recall_vals    <- c(0, recall_vals)
+    precision_vals <- c(1, precision_vals)
+
+    baseline <- n_pos / n
+    auc_pr   <- sum(diff(recall_vals) *
+                    (precision_vals[-1] + precision_vals[-length(precision_vals)]) / 2)
+
+    result_list[[i]] <- data.frame(
+      model_size_factor = ms_f, context_size_factor = cs_f,
+      recall = recall_vals, precision = precision_vals,
+      baseline = baseline, auc_pr = auc_pr,
+      auc_label = sprintf("AUC-PR = %.2f", auc_pr),
+      stringsAsFactors = FALSE
+    )
+  }
+
+  out <- bind_rows(result_list)
+  out$model_size_factor   <- factor(out$model_size_factor,
+                                    levels = levels(data$model_size_factor))
+  out$context_size_factor <- factor(out$context_size_factor,
+                                    levels = levels(data$context_size_factor))
+  out
+}
+
 #' Create faceted boxplot of Evo2 delta scores with Wilcoxon test p-values
 #' Uses pseudo-log scale for y-axis
 #'
@@ -222,7 +376,7 @@ create_faceted_boxplot <- function(data, vep_filter = NULL, title = NULL,
     mutate(
       model_size = str_replace_all(str_replace_all(str_replace_all(model_size, "_", " "), "arc ", ""), "longcontext", "Long-Context"),
       model_size_factor = factor(model_size, levels = c("1b", "7b", "7b Long-Context", "40b", "40b Long-Context")),
-      context_size_factor = factor(ifelse(context_size!=1000000, paste0(context_size, " bp"), "1 Mb"), levels = ifelse(sort(unique(context_size))!=1000000, paste0(sort(unique(context_size)), " bp"), "1 Mb"))
+      context_size_factor = factor(ifelse(context_size!=1000000, paste0(prettyNum(context_size, big.mark=","), " bp"), "1 Mb"), levels = ifelse(sort(unique(context_size))!=1000000, paste0(prettyNum(sort(unique(context_size)), big.mark=","), " bp"), "1 Mb"))
     )
 
   # Optionally restrict to long-context models only
@@ -237,17 +391,26 @@ create_faceted_boxplot <- function(data, vep_filter = NULL, title = NULL,
     if (nrow(data) == 0) stop("No data remaining after context size filter (<= ", max_context_size, ")")
   }
 
-  # Calculate Wilcoxon test p-values
+  # Calculate Wilcoxon test p-values and median percentage differences
   message("Calculating Wilcoxon test p-values...")
   pvalues <- calculate_wilcoxon_pvalues(data)
-  
-  # Add factor columns to pvalues for merging
-  pvalues <- pvalues %>%
+
+  message("Calculating median percentage differences...")
+  median_diffs <- calculate_median_pct_diff(data)
+
+  # Build separate annotation dataframes for top (p-value) and bottom (median diff)
+  annotations <- pvalues %>%
     mutate(
       model_size_factor = factor(model_size, levels = c("1b", "7b", "7b Long-Context", "40b", "40b Long-Context")),
-      context_size_factor = factor(ifelse(context_size!=1000000, paste0(context_size, " bp"), "1 Mb"), levels = ifelse(sort(unique(context_size))!=1000000, paste0(sort(unique(context_size)), " bp"), "1 Mb"))
+      context_size_factor = factor(ifelse(context_size!=1000000, paste0(prettyNum(context_size, big.mark=","), " bp"), "1 Mb"), levels = ifelse(sort(unique(context_size))!=1000000, paste0(prettyNum(sort(unique(context_size)), big.mark=","), " bp"), "1 Mb"))
     )
-  
+
+  median_annot <- median_diffs %>%
+    mutate(
+      model_size_factor = factor(model_size, levels = c("1b", "7b", "7b Long-Context", "40b", "40b Long-Context")),
+      context_size_factor = factor(ifelse(context_size!=1000000, paste0(prettyNum(context_size, big.mark=","), " bp"), "1 Mb"), levels = ifelse(sort(unique(context_size))!=1000000, paste0(prettyNum(sort(unique(context_size)), big.mark=","), " bp"), "1 Mb"))
+    )
+
   # Print p-values
   message("\nWilcoxon test results:")
   print(pvalues %>% select(model_size, context_size, p_value, significance))
@@ -264,14 +427,23 @@ create_faceted_boxplot <- function(data, vep_filter = NULL, title = NULL,
       fun = median, fun.min = median, fun.max = median,
       geom = "crossbar", width = 0.3, color = "black", linewidth = 0.8
     ) +
-    # Add p-value labels pinned to top of each facet panel
+    # P-value pinned to the top of each facet panel
     geom_text(
-      data = pvalues,
+      data = annotations,
       aes(x = 1.5, y = Inf, label = p_display),
       inherit.aes = FALSE,
       vjust = 1.5,
       size = 4.5,
       fontface = "bold"
+    ) +
+    # Median % difference pinned to the bottom of each facet panel
+    geom_text(
+      data = median_annot,
+      aes(x = 1.5, y = -Inf, label = pct_label),
+      inherit.aes = FALSE,
+      vjust = -0.5,
+      size = 4,
+      fontface = "italic"
     ) +
     # Apply pseudo-log scale transformation to y-axis, showing only 0
     scale_y_continuous(
@@ -288,9 +460,8 @@ create_faceted_boxplot <- function(data, vep_filter = NULL, title = NULL,
     theme_bw() +
     theme(
       plot.title = element_text(hjust = 0.5, face = "bold", size = 18),
-      plot.margin = margin(5, 20, 5, 5, "mm"),
+      plot.margin = margin(5, 20, 10, 5, "mm"),
       axis.text = element_text(size = 12),
-      axis.text.x = element_text(angle = 45, hjust = 1),
       axis.title = element_text(size = 13),
       strip.text.x = element_text(face = "bold", size = 13),
       strip.text.y = element_text(face = "bold", size = 12, angle = 0),
@@ -305,6 +476,169 @@ create_faceted_boxplot <- function(data, vep_filter = NULL, title = NULL,
   print(counts)
   
   return(p)
+}
+
+#' Create faceted ROC curve plot for High PIP vs Low PIP discrimination
+#'
+#' @param data Data frame with results
+#' @param coding_filter Optional: 'coding', 'non-coding', or NULL for all variants
+#' @param title Plot title (auto-generated if NULL)
+#' @param long_context_only Restrict to long-context models
+#' @param max_context_size Upper cap on context size
+#' @return ggplot object
+create_faceted_roc_plot <- function(data, coding_filter = NULL, title = NULL,
+                                    long_context_only = FALSE,
+                                    max_context_size = NULL) {
+  if (!is.null(coding_filter)) {
+    data <- data %>% filter(Coding == ifelse(coding_filter == "coding", 1, 0))
+    if (nrow(data) == 0) stop("No data found for coding_filter: ", coding_filter)
+    if (is.null(title)) {
+      title <- paste0("ROC Curves — Evo2 Delta Score\n(",
+                      str_to_title(coding_filter), " Variants)")
+    }
+  } else {
+    if (is.null(title)) title <- "ROC Curves — Evo2 Delta Score\n(All Variants)"
+  }
+
+  data <- data %>%
+    mutate(
+      model_size = str_replace_all(str_replace_all(str_replace_all(str_replace_all(model_size, "_", " "), "arc ", ""), "longcontext", "Long-Context"), "Long-Context", "LC"),
+      model_size_factor = factor(model_size, levels = c("1b", "7b", "7b LC", "40b", "40b LC")),
+      context_size_factor = factor(ifelse(context_size!=1000000, paste0(prettyNum(context_size, big.mark=","), " bp"), "1 Mb"), levels = ifelse(sort(unique(context_size))!=1000000, paste0(prettyNum(sort(unique(context_size)), big.mark=","), " bp"), "1 Mb"))
+    )
+
+  if (long_context_only) {
+    data <- data %>% filter(grepl("LC", model_size))
+    if (nrow(data) == 0) stop("No long-context model data found")
+  }
+
+  if (!is.null(max_context_size)) {
+    data <- data %>% filter(context_size <= max_context_size)
+    if (nrow(data) == 0) stop("No data remaining after context size filter")
+  }
+
+  roc_df <- compute_roc_data(data)
+
+  auc_df <- roc_df %>%
+    group_by(model_size_factor, context_size_factor) %>%
+    slice(1) %>%
+    ungroup() %>%
+    select(model_size_factor, context_size_factor, auc_label)
+
+  ggplot(roc_df, aes(x = fpr, y = tpr)) +
+    geom_line(color = "#08519c", linewidth = 0.9, na.rm = TRUE) +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed",
+                color = "grey50", linewidth = 0.6) +
+    geom_text(
+      data = auc_df,
+      aes(x = 0.65, y = 0.08, label = auc_label),
+      inherit.aes = FALSE, size = 4, fontface = "bold"
+    ) +
+    facet_grid(context_size_factor ~ model_size_factor) +
+    coord_fixed() +
+    scale_x_continuous(limits = c(0, 1), breaks = c(0, 0.5, 1),
+                       labels = c("0", "0.5", "1")) +
+    scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.5, 1),
+                       labels = c("0", "0.5", "1")) +
+    labs(title = title, x = "False Positive Rate", y = "True Positive Rate") +
+    theme_bw() +
+    theme(
+      plot.title       = element_text(hjust = 0.5, face = "bold", size = 18),
+      plot.margin      = margin(5, 20, 5, 5, "mm"),
+      axis.text        = element_text(size = 12),
+      axis.title       = element_text(size = 13),
+      strip.text.x     = element_text(face = "bold", size = 13),
+      strip.text.y     = element_text(face = "bold", size = 12, angle = 0),
+      legend.position  = "none",
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank()
+    )
+}
+
+#' Create faceted precision-recall curve plot for High PIP vs Low PIP discrimination
+#'
+#' @param data Data frame with results
+#' @param coding_filter Optional: 'coding', 'non-coding', or NULL for all variants
+#' @param title Plot title (auto-generated if NULL)
+#' @param long_context_only Restrict to long-context models
+#' @param max_context_size Upper cap on context size
+#' @return ggplot object
+create_faceted_pr_plot <- function(data, coding_filter = NULL, title = NULL,
+                                   long_context_only = FALSE,
+                                   max_context_size = NULL) {
+  if (!is.null(coding_filter)) {
+    data <- data %>% filter(Coding == ifelse(coding_filter == "coding", 1, 0))
+    if (nrow(data) == 0) stop("No data found for coding_filter: ", coding_filter)
+    if (is.null(title)) {
+      title <- paste0("Precision-Recall Curves — Evo2 Delta Score\n(",
+                      str_to_title(coding_filter), " Variants)")
+    }
+  } else {
+    if (is.null(title)) title <- "Precision-Recall Curves — Evo2 Delta Score\n(All Variants)"
+  }
+
+  data <- data %>%
+    mutate(
+      model_size = str_replace_all(str_replace_all(str_replace_all(model_size, "_", " "), "arc ", ""), "longcontext", "Long-Context"),
+      model_size_factor = factor(model_size, levels = c("1b", "7b", "7b Long-Context", "40b", "40b Long-Context")),
+      context_size_factor = factor(ifelse(context_size!=1000000, paste0(prettyNum(context_size, big.mark=","), " bp"), "1 Mb"), levels = ifelse(sort(unique(context_size))!=1000000, paste0(prettyNum(sort(unique(context_size)), big.mark=","), " bp"), "1 Mb"))
+    )
+
+  if (long_context_only) {
+    data <- data %>% filter(grepl("Long-Context", model_size))
+    if (nrow(data) == 0) stop("No long-context model data found")
+  }
+
+  if (!is.null(max_context_size)) {
+    data <- data %>% filter(context_size <= max_context_size)
+    if (nrow(data) == 0) stop("No data remaining after context size filter")
+  }
+
+  pr_df <- compute_pr_data(data)
+
+  auc_df <- pr_df %>%
+    group_by(model_size_factor, context_size_factor) %>%
+    slice(1) %>%
+    ungroup() %>%
+    select(model_size_factor, context_size_factor, auc_label)
+
+  baseline_df <- pr_df %>%
+    group_by(model_size_factor, context_size_factor) %>%
+    slice(1) %>%
+    ungroup() %>%
+    select(model_size_factor, context_size_factor, baseline)
+
+  ggplot(pr_df, aes(x = recall, y = precision)) +
+    geom_line(color = "#08519c", linewidth = 0.9, na.rm = TRUE) +
+    geom_hline(
+      data = baseline_df,
+      aes(yintercept = baseline),
+      linetype = "dashed", color = "firebrick", linewidth = 0.6,
+      na.rm = TRUE
+    ) +
+    geom_text(
+      data = auc_df,
+      aes(x = 0.5, y = 0.05, label = auc_label),
+      inherit.aes = FALSE, size = 4, fontface = "bold"
+    ) +
+    facet_grid(context_size_factor ~ model_size_factor) +
+    scale_x_continuous(limits = c(0, 1), breaks = c(0, 0.5, 1),
+                       labels = c("0", "0.5", "1")) +
+    scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.5, 1),
+                       labels = c("0", "0.5", "1")) +
+    labs(title = title, x = "Recall", y = "Precision") +
+    theme_bw() +
+    theme(
+      plot.title       = element_text(hjust = 0.5, face = "bold", size = 18),
+      plot.margin      = margin(5, 20, 5, 5, "mm"),
+      axis.text        = element_text(size = 12),
+      axis.title       = element_text(size = 13),
+      strip.text.x     = element_text(face = "bold", size = 13),
+      strip.text.y     = element_text(face = "bold", size = 12, angle = 0),
+      legend.position  = "none",
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank()
+    )
 }
 
 #' Save plot to file in specified directory
@@ -441,6 +775,66 @@ main <- function() {
                   format = output_format, output_directory = output_dir)
       }, error = function(e) {
         message("Error creating plot for ", coding_option, ": ", e$message)
+      })
+    }
+
+    # ROC curves
+    message("Creating ROC curve plots", lc_label, "...")
+    tryCatch({
+      save_plot(
+        create_faceted_roc_plot(results_data,
+                                long_context_only = lc_only,
+                                max_context_size  = max_context),
+        paste0("evo2_roc_all_variants", lc_suffix),
+        width = plot_width, height = plot_height,
+        format = output_format, output_directory = output_dir
+      )
+    }, error = function(e) {
+      message("Error creating ROC (all variants): ", e$message)
+    })
+
+    for (coding_option in c("coding", "non-coding")) {
+      tryCatch({
+        save_plot(
+          create_faceted_roc_plot(results_data, coding_filter = coding_option,
+                                  long_context_only = lc_only,
+                                  max_context_size  = max_context),
+          paste0("evo2_roc_", tolower(gsub("[^A-Za-z0-9_]", "_", coding_option)), lc_suffix),
+          width = plot_width, height = plot_height,
+          format = output_format, output_directory = output_dir
+        )
+      }, error = function(e) {
+        message("Error creating ROC (", coding_option, "): ", e$message)
+      })
+    }
+
+    # Precision-recall curves
+    message("Creating precision-recall curve plots", lc_label, "...")
+    tryCatch({
+      save_plot(
+        create_faceted_pr_plot(results_data,
+                               long_context_only = lc_only,
+                               max_context_size  = max_context),
+        paste0("evo2_pr_all_variants", lc_suffix),
+        width = plot_width, height = plot_height,
+        format = output_format, output_directory = output_dir
+      )
+    }, error = function(e) {
+      message("Error creating PR (all variants): ", e$message)
+    })
+
+    for (coding_option in c("coding", "non-coding")) {
+      tryCatch({
+        save_plot(
+          create_faceted_pr_plot(results_data, coding_filter = coding_option,
+                                 long_context_only = lc_only,
+                                 max_context_size  = max_context),
+          paste0("evo2_pr_", tolower(gsub("[^A-Za-z0-9_]", "_", coding_option)), lc_suffix),
+          width = plot_width, height = plot_height,
+          format = output_format, output_directory = output_dir
+        )
+      }, error = function(e) {
+        message("Error creating PR (", coding_option, "): ", e$message)
       })
     }
   }
