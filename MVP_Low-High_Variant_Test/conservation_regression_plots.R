@@ -138,7 +138,7 @@ individual_results <- map_dfr(names(predictors), function(name) {
   ci    <- exp(confint.default(fit)[2, ])
   pval  <- coef_df[2, "Pr(>|z|)"]
 
-  message(sprintf("  %-30s  beta=%+.3f  OR=%.3f [%.3f, %.3f]  %s  %s",
+  message(sprintf("  %-30s  beta=%+.2f  OR=%.3f [%.3f, %.3f]  %s  %s",
                   name, beta, or, ci[1], ci[2], format_pval(pval), sig_stars(pval)))
 
   tibble(
@@ -263,7 +263,7 @@ message("\nBuilding violin panel (individual regressions)...")
 
 make_violin_panel <- function(pred_name, pred_label, p_label_str, beta_val) {
   annotation_str <- paste0(
-    "\u03b2 = ", sprintf("%+.3f", beta_val), "\n",
+    "\u03b2 = ", sprintf("%+.2f", beta_val), "\n",
     p_label_str
   )
   ggplot(df_complete,
@@ -354,7 +354,7 @@ plot_forest_base <- ggplot(forest_df,
 side_df <- forest_df %>%
   mutate(
     side_label = paste0(
-      "\u03b2 = ", sprintf("%+.3f", beta), "\n",
+      "\u03b2 = ", sprintf("%+.2f", beta), "\n",
       p_label, "  ", stars
     )
   )
@@ -422,7 +422,7 @@ make_corr_panel <- function(pair) {
   y_col <- pair$y
 
   ct    <- cor.test(df_complete[[x_col]], df_complete[[y_col]], method = "pearson")
-  r_val <- sprintf("r = %.3f", ct$estimate)
+  r_val <- sprintf("r = %.2f", ct$estimate)
   p_val <- format_pval(ct$p.value)
   annot <- paste0(r_val, "\n", p_val)
 
@@ -495,12 +495,12 @@ cor_results <- bind_rows(
 message("\n--- MAF vs Evo2 Pearson correlations ---")
 walk(seq_len(nrow(cor_results)), function(i) {
   r <- cor_results[i, ]
-  message(sprintf("  %-20s  r = %+.3f  %s  n = %d",
+  message(sprintf("  %-20s  r = %+.2f  %s  n = %d",
                   r$subset, r$r, format_pval(r$p), r$n))
 })
 
 # --- 9b: Left panel — All variants ---
-cor_all_label <- paste0("r = ", sprintf("%.3f", cor_results$r[1]),
+cor_all_label <- paste0("r = ", sprintf("%.2f", cor_results$r[1]),
                         "     ", format_pval(cor_results$p[1]),
                         "     n = ", cor_results$n[1])
 
@@ -532,7 +532,7 @@ cor_facet_df <- cor_results %>%
   filter(subset %in% facet_order) %>%
   mutate(
     subset = factor(subset, levels = facet_order),
-    label  = paste0("r = ", sprintf("%.3f", r), "     ", format_pval(p),
+    label  = paste0("r = ", sprintf("%.2f", r), "     ", format_pval(p),
                     "     n = ", n)
   )
 
@@ -597,12 +597,12 @@ cor_results_log <- bind_rows(
 message("\n--- MAF vs log10(|Evo2|) Pearson correlations ---")
 walk(seq_len(nrow(cor_results_log)), function(i) {
   r <- cor_results_log[i, ]
-  message(sprintf("  %-20s  r = %+.3f  %s  n = %d",
+  message(sprintf("  %-20s  r = %+.2f  %s  n = %d",
                   r$subset, r$r, format_pval(r$p), r$n))
 })
 
 # --- 10b: Left panel — All variants ---
-cor_log_all_label <- paste0("r = ", sprintf("%.3f", cor_results_log$r[1]),
+cor_log_all_label <- paste0("r = ", sprintf("%.2f", cor_results_log$r[1]),
                             "     ", format_pval(cor_results_log$p[1]),
                             "     n = ", cor_results_log$n[1])
 
@@ -633,7 +633,7 @@ cor_facet_log_df <- cor_results_log %>%
   filter(subset %in% facet_order) %>%
   mutate(
     subset = factor(subset, levels = facet_order),
-    label  = paste0("r = ", sprintf("%.3f", r), "     ", format_pval(p),
+    label  = paste0("r = ", sprintf("%.2f", r), "     ", format_pval(p),
                     "     n = ", n)
   )
 
@@ -759,7 +759,7 @@ plot_maf_forest_base <- ggplot(maf_forest_df,
 
 # --- 11d: Side text panel ---
 maf_side_df <- maf_forest_df %>%
-  mutate(side_label = paste0("\u03b2 = ", sprintf("%+.3f", beta), "\n",
+  mutate(side_label = paste0("\u03b2 = ", sprintf("%+.2f", beta), "\n",
                              p_label, "  ", stars))
 
 plot_maf_side <- ggplot(maf_side_df, aes(x = 0, y = label)) +
