@@ -1,12 +1,15 @@
 """
-Step 3a: Evo2 variant scorer for T2D fine-mapping loci.
+Evo2 variant scorer for T2D fine-mapping loci — runs on PARCC Betty.
 
 Adapted from MVP_Low-High_Variant_Test/mvp_variants_test.py with these changes:
-  - Reads per-locus TSV produced by extract_locus_variants.py
-    (columns: SNP_ID, CHR, POS, REF, ALT, ...)
+  - Reads the merged variant TSV produced by merge_variant_lists.py
+    (columns: uid, locus_id, SNP_ID, CHR, POS, REF, ALT, ...), indexed on the
+    collision-safe `uid` column so scoring/fasta-naming never gets two loci
+    that happen to share an rsID
   - Uses GRCh37/hg19 FASTA (chromosomes named chr1, chr2, ...)
-  - Context window fixed at 16,384 bp
-  - No PIP-class logic; scores all variants and writes delta scores
+  - No PIP-class logic; scores all variants and writes delta scores,
+    carrying `locus_id` through to the output so results can be split back
+    into per-locus files after transfer back to Polaris
 
 Two modes:
   prepare  -- extract sequences, write temp FASTAs, print shell variables
@@ -33,7 +36,7 @@ from pyfaidx import Fasta
 # Helpers
 # ------------------------------------------------------------------
 
-def extract_context(fasta: Fasta, chrom: str, pos: int, ctx: int = 16_384):
+def extract_context(fasta: Fasta, chrom: str, pos: int, ctx: int = 8_192):
     half = ctx // 2
     start = max(1, pos - half)
     end = pos + half
@@ -69,7 +72,7 @@ def check_fp8_support():
 
 def load_variant_df(variant_file):
     df = pd.read_csv(variant_file, sep="\t", dtype={"CHR": str})
-    df.index = df["SNP_ID"]
+    df.index = df["uid"]
     return df
 
 
@@ -263,7 +266,7 @@ def mode_process(args):
     chunk_df["var_log_probs"] = var_lps
     chunk_df["evo2_delta_score"] = chunk_df["var_log_probs"] - chunk_df["ref_log_probs"]
 
-    out_cols = ["SNP_ID", "CHR", "POS", "REF", "ALT", "ref_log_probs", "var_log_probs", "evo2_delta_score"]
+    out_cols = ["locus_id", "SNP_ID", "CHR", "POS", "REF", "ALT", "ref_log_probs", "var_log_probs", "evo2_delta_score"]
     write_header = True
     if os.path.exists(out_file):
         try:
@@ -298,16 +301,16 @@ def mode_process(args):
 def main():
     parser = argparse.ArgumentParser("Evo2 T2D locus variant scorer")
     parser.add_argument("--mode", required=True, choices=["prepare", "process"])
-    parser.add_argument("--variants", required=True, help="Per-locus variant TSV")
+    parser.add_argument("--variants", required=True, help="Merged variant TSV (see merge_variant_lists.py)")
     parser.add_argument("--fasta", required=True, help="GRCh37 reference FASTA (must have .fai index)")
     parser.add_argument("--out", required=True, help="Output scores CSV")
-    parser.add_argument("--ctx", type=int, default=16_384, help="Context window in bp (default: 16384)")
-    parser.add_argument("--chunk-size", type=int, default=10,
-                        help="Variants per scoring batch (default: 10; increase if GPU memory allows)")
+    parser.add_argument("--ctx", type=int, default=8_192, help="Context window in bp (default: 8192)")
+    parser.add_argument("--chunk-size", type=int, default=100,
+                        help="Variants per scoring batch (default: 100; increase if GPU memory allows)")
     parser.add_argument("--model", default="7b_arc_longcontext")
     parser.add_argument("--checkpoint-dir",
-                        default="/lus/grand/projects/GeomicVar/mconery/tools/bionemo_cache")
-    parser.add_argument("--tensor-parallel-size", type=int, default=4)
+                        default="/vast/projects/anuragv/cohort/mconery/bionemo")
+    parser.add_argument("--tensor-parallel-size", type=int, default=8)
     parser.add_argument("--context-parallel-size", type=int, default=1)
     parser.add_argument("--chunk-start", type=int, default=0)
     parser.add_argument("--chunk-end", type=int, default=None)
