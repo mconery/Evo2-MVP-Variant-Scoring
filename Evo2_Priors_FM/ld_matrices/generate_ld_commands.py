@@ -46,9 +46,6 @@ skipped_no_variants = 0
 
 for _, row in loci.iterrows():
     locus_id = row["locus_id"]
-    chrom = row["chr"]
-    start = int(row["start"])
-    end = int(row["end"])
     out_prefix = RESULTS_DIR / locus_id
 
     # Load per-locus variant list to build extract file
@@ -75,9 +72,6 @@ for _, row in loci.iterrows():
         f"--pfile {PFILE} "
         f"--keep {KEEP_FILE} "
         f"--extract '{extract_file}' "
-        f"--chr {chrom} "
-        f"--from-bp {start} "
-        f"--to-bp {end} "
         f"--r-unphased square "
         f"--out '{out_prefix}' "
         f"--threads {THREADS} "
