@@ -36,7 +36,7 @@ skipped_complete = 0
 for _, row in loci.iterrows():
     locus_id = row["locus_id"]
 
-    vcor1 = LD_DIR / f"{locus_id}.vcor"
+    vcor1 = LD_DIR / f"{locus_id}.unphased.vcor1"
     sumstats = SUMSTATS_DIR / f"{locus_id}.variants.tsv"
     prior_file = PRIORS_DIR / f"{locus_id}.prior_weights.tsv"
 
