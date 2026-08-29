@@ -1,8 +1,8 @@
 #!/bin/bash
 #PBS -l select=1:system=polaris
-#PBS -l walltime=04:00:00
+#PBS -l walltime=01:00:00
 #PBS -l filesystems=grand:home
-#PBS -q preemptable
+#PBS -q debug
 #PBS -A GeomicVar
 #PBS -N ld_matrices_t2d
 #PBS -o /grand/GeomicVar/mconery/evo2_variant_scoring_mapping/ld_matrices/logs/ld_matrices.log
