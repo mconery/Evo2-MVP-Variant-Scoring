@@ -1,8 +1,8 @@
 #!/bin/bash
 #PBS -l select=1:system=polaris
-#PBS -l walltime=01:00:00
+#PBS -l walltime=48:00:00
 #PBS -l filesystems=grand:home
-#PBS -q debug
+#PBS -q capacity
 #PBS -A GeomicVar
 #PBS -N carma_t2d
 #PBS -o /grand/GeomicVar/mconery/evo2_variant_scoring_mapping/carma_results/logs/carma.log
