@@ -46,6 +46,15 @@ sumstats_file <- args[1]
 ld_file       <- args[2]
 out_file      <- args[3]
 
+# ---------------------------------------------------------------------------
+# 1b) Skip if output already exists
+# ---------------------------------------------------------------------------
+
+if (file.exists(out_file)) {
+  cat(paste0("Output file already exists, skipping: ", out_file, "\n"))
+  quit(save = "no")
+}
+
 # Defaults
 use_priors      <- FALSE
 prior_file      <- NULL
@@ -119,6 +128,39 @@ R <- as.matrix(read.csv(ld_file, sep = "\t", header = FALSE))
 rownames(R) <- var_ids
 colnames(R) <- var_ids
 
+
+n_variants_before <- length(var_ids)
+
+# First pass: drop fully-NA rows/columns all at once. Removing a fully-NA
+# variant can't change whether any other row/column is "fully NA" (it only
+# ever removes one NA entry from each remaining row), so this is safe to do
+# in a single batch rather than one at a time.
+full_na <- rowSums(is.na(R)) == ncol(R)
+if (any(full_na)) {
+  R <- R[!full_na, !full_na, drop = FALSE]
+  var_ids <- var_ids[!full_na]
+}
+
+# Second pass: iteratively remove the variant with the most remaining NAs.
+repeat {
+  na_counts <- rowSums(is.na(R))
+  if (all(na_counts == 0)) break
+  worst <- which.max(na_counts)
+  R <- R[-worst, -worst, drop = FALSE]
+  var_ids <- var_ids[-worst]
+}
+
+n_removed <- n_variants_before - length(var_ids)
+if (n_removed > 0) {
+  cat(paste0("NOTE: removed ", n_removed, " variant(s) with NAs from LD matrix; ",
+             length(var_ids), " variant(s) remain.\n"))
+}
+
+if (length(var_ids) == 0) {
+  cat("ERROR: all variants removed from LD matrix due to NAs.\n")
+  quit(save = "no")
+}
+
 # ---------------------------------------------------------------------------
 # 4) Load and align summary statistics
 # ---------------------------------------------------------------------------
@@ -156,16 +198,29 @@ lambda.list <- list(lambda)
 # ---------------------------------------------------------------------------
 # 5) Load priors (optional)
 # ---------------------------------------------------------------------------
-
+ 
 w.list <- NULL
-
+ 
 if (use_priors) {
   pw <- read.table(prior_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
   # Align prior weights to the order of variants in the LD matrix / sumstats
   weights_aligned <- pw$prior_weight[match(var_ids, pw$SNP_ID)]
   # Variants with no Evo2 score get a neutral weight of 1.0
   weights_aligned[is.na(weights_aligned)] <- 1.0
-  w.list <- list(weights_aligned)
+  # CARMA fits its logistic annotation-prior model with glmnet internally,
+  # and glmnet hard-refuses any x matrix with fewer than 2 columns ("x
+  # should be a matrix with 2 or more columns") -- this is a glmnet
+  # limitation, not something specific to CARMA. Since we only have one
+  # real annotation (the Evo2 score), pad with a second, near-duplicate
+  # column purely to satisfy that >=2-column requirement. The pad carries
+  # no independent information (it's the same column rescaled by a
+  # negligible factor), so it doesn't meaningfully change the fitted prior.
+  w_matrix <- cbind(
+    evo2_prior     = weights_aligned,
+    evo2_prior_pad = weights_aligned * (1 + 1e-6)
+  )
+  rownames(w_matrix) <- var_ids
+  w.list <- list(w_matrix)
   cat(paste0("Priors loaded: ", sum(!is.na(pw$prior_weight[match(var_ids, pw$SNP_ID)])),
              "/", length(var_ids), " variants have Evo2 weights (input.alpha=", input_alpha, ")\n"))
 }
@@ -218,39 +273,33 @@ while (!success && attempts < max_attempts) {
 # 8) Build output data frame
 # ---------------------------------------------------------------------------
 
-prior_weight_col <- if (!is.null(w.list)) w.list[[1]] else rep(NA_real_, length(var_ids))
-
 if (!success) {
-  cat(paste0("ERROR: CARMA failed after ", max_attempts, " attempts.\n"))
-  out_data <- data.frame(
-    SNP_ID       = var_ids,
-    Z_SCORE      = z_scores,
-    PIP          = NA_real_,
-    CS_ID        = 0L,
-    PRIOR_WEIGHT = prior_weight_col
-  )
-} else {
-  cat(paste0("SUCCESS: CARMA completed in ", round(carma_time_seconds, 2), "s after ",
-             attempts, " attempt(s).\n"))
-
-  pips <- carma_results[[1]]$PIPs
-
-  cs_ids <- integer(length(var_ids))
-  cs_list <- carma_results[[1]]$"Credible set"[[2]]
-  if (length(cs_list) > 0) {
-    for (s in seq_along(cs_list)) {
-      cs_ids[cs_list[[s]]] <- as.integer(s)
-    }
-  }
-
-  out_data <- data.frame(
-    SNP_ID       = var_ids,
-    Z_SCORE      = z_scores,
-    PIP          = pips,
-    CS_ID        = cs_ids,
-    PRIOR_WEIGHT = prior_weight_col
-  )
+  cat(paste0("ERROR: CARMA failed after ", max_attempts, " attempts for ", out_file, ". No output written.\n"))
+  quit(save = "no", status = 1)
 }
+
+prior_weight_col <- if (!is.null(w.list)) as.vector(w.list[[1]][, "evo2_prior"]) else rep(NA_real_, length(var_ids))
+
+cat(paste0("SUCCESS: CARMA completed in ", round(carma_time_seconds, 2), "s after ",
+           attempts, " attempt(s).\n"))
+
+pips <- carma_results[[1]]$PIPs
+
+cs_ids <- integer(length(var_ids))
+cs_list <- carma_results[[1]]$"Credible set"[[2]]
+if (length(cs_list) > 0) {
+  for (s in seq_along(cs_list)) {
+    cs_ids[cs_list[[s]]] <- as.integer(s)
+  }
+}
+
+out_data <- data.frame(
+  SNP_ID       = var_ids,
+  Z_SCORE      = z_scores,
+  PIP          = pips,
+  CS_ID        = cs_ids,
+  PRIOR_WEIGHT = prior_weight_col
+)
 
 write.table(out_data, file = out_file,
             col.names = TRUE, row.names = FALSE, quote = FALSE, sep = "\t")
