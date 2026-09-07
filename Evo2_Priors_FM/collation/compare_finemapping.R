@@ -637,15 +637,15 @@ cat("\nAll outputs written to:", OUT_DIR, "\n")
 # variant's point gets a colored FILL if it's a uniform-prior CS member, and
 # a colored RING (border) if it's an Evo2-prior CS member. Points in neither
 # CS render as plain light grey (fill and border both grey, so no
-# distinguishable ring) -- both colored encodings draw from the same
-# CS-index -> color palette, built per locus (CS numbering is locus-local,
-# not shared genome-wide, so palettes are re-built per locus).
+# distinguishable ring). The two encodings use two different hue families
+# (shades of red for uniform-prior CS fills, shades of blue for Evo2-prior CS
+# rings) so it's easy to tell at a glance which analysis a highlight belongs
+# to; different shades within each family distinguish different CS indices.
+# Palettes are re-built per locus since CS numbering is locus-local, not
+# shared genome-wide.
 
-cs_palette <- function(n) {
-  base_colors <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442",
-                    "#0072B2", "#D55E00", "#CC79A7")
-  rep_len(base_colors, n)
-}
+red_palette  <- function(n) colorRampPalette(c("#FFB3B3", "#800000"))(n)
+blue_palette <- function(n) colorRampPalette(c("#A6D0FF", "#00204D"))(n)
 
 # Mechanical label rule per your spec: title case, underscores -> spaces.
 # Note this will render acronyms as "Pval"/"Pip" rather than "PVAL"/"PIP" --
@@ -708,17 +708,20 @@ for (lid in loci_with_both) {
     mutate(is_highlighted = fill_grp != "None" | ring_grp != "None") %>%
     arrange(is_highlighted)
 
-  cs_levels <- sort(unique(c(setdiff(locus_df$fill_grp, "None"),
-                              setdiff(locus_df$ring_grp, "None"))))
-  pal <- if (length(cs_levels) > 0) setNames(cs_palette(length(cs_levels)), cs_levels) else character(0)
-  fill_values   <- c(pal, "None" = "grey80")
+  fill_levels <- sort(setdiff(unique(locus_df$fill_grp), "None"))
+  ring_levels <- sort(setdiff(unique(locus_df$ring_grp), "None"))
+
+  pal_fill <- if (length(fill_levels) > 0) setNames(red_palette(length(fill_levels)),  fill_levels) else character(0)
+  pal_ring <- if (length(ring_levels) > 0) setNames(blue_palette(length(ring_levels)), ring_levels) else character(0)
+
+  fill_values <- c(pal_fill, "None" = "grey80")
   # NOTE: "None" must NOT map to NA here. geom_point() treats colour as a
   # required aesthetic even with shape 21 (fill + border), so an NA colour
   # value causes ggplot to silently drop that row entirely via
   # remove_missing() -- not just render an invisible border. Using the same
   # grey as the fill keeps the row visible while showing no distinguishable
   # ring (fill and border are indistinguishable in that colour).
-  colour_values <- c(pal, "None" = "grey80")
+  colour_values <- c(pal_ring, "None" = "grey80")
 
   x_range <- range(locus_df$POS_num, na.rm = TRUE)
   chr_num <- unique(locus_df$CHR)[1]
