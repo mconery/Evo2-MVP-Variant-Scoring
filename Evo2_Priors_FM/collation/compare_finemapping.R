@@ -635,9 +635,10 @@ cat("\nAll outputs written to:", OUT_DIR, "\n")
 # genomic-position x-axis: GWAS -log10(p) on top, uniform-prior PIP in the
 # middle, Evo2-prior PIP on the bottom. Base points are light grey; a
 # variant's point gets a colored FILL if it's a uniform-prior CS member, and
-# a colored RING (border) if it's an Evo2-prior CS member -- both drawn from
-# the same CS-index -> color palette, built per locus (CS numbering is
-# locus-local, not shared genome-wide, so palettes are re-built per locus).
+# a colored RING (border) if it's an Evo2-prior CS member (no ring at all
+# otherwise) -- both drawn from the same CS-index -> color palette, built per
+# locus (CS numbering is locus-local, not shared genome-wide, so palettes are
+# re-built per locus).
 
 cs_palette <- function(n) {
   base_colors <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442",
@@ -710,7 +711,7 @@ for (lid in loci_with_both) {
                               setdiff(locus_df$ring_grp, "None"))))
   pal <- if (length(cs_levels) > 0) setNames(cs_palette(length(cs_levels)), cs_levels) else character(0)
   fill_values   <- c(pal, "None" = "grey80")
-  colour_values <- c(pal, "None" = "grey50")
+  colour_values <- c(pal, "None" = NA)
 
   x_range <- range(locus_df$POS_num, na.rm = TRUE)
   chr_num <- unique(locus_df$CHR)[1]
