@@ -635,10 +635,11 @@ cat("\nAll outputs written to:", OUT_DIR, "\n")
 # genomic-position x-axis: GWAS -log10(p) on top, uniform-prior PIP in the
 # middle, Evo2-prior PIP on the bottom. Base points are light grey; a
 # variant's point gets a colored FILL if it's a uniform-prior CS member, and
-# a colored RING (border) if it's an Evo2-prior CS member (no ring at all
-# otherwise) -- both drawn from the same CS-index -> color palette, built per
-# locus (CS numbering is locus-local, not shared genome-wide, so palettes are
-# re-built per locus).
+# a colored RING (border) if it's an Evo2-prior CS member. Points in neither
+# CS render as plain light grey (fill and border both grey, so no
+# distinguishable ring) -- both colored encodings draw from the same
+# CS-index -> color palette, built per locus (CS numbering is locus-local,
+# not shared genome-wide, so palettes are re-built per locus).
 
 cs_palette <- function(n) {
   base_colors <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442",
@@ -711,7 +712,13 @@ for (lid in loci_with_both) {
                               setdiff(locus_df$ring_grp, "None"))))
   pal <- if (length(cs_levels) > 0) setNames(cs_palette(length(cs_levels)), cs_levels) else character(0)
   fill_values   <- c(pal, "None" = "grey80")
-  colour_values <- c(pal, "None" = NA)
+  # NOTE: "None" must NOT map to NA here. geom_point() treats colour as a
+  # required aesthetic even with shape 21 (fill + border), so an NA colour
+  # value causes ggplot to silently drop that row entirely via
+  # remove_missing() -- not just render an invisible border. Using the same
+  # grey as the fill keeps the row visible while showing no distinguishable
+  # ring (fill and border are indistinguishable in that colour).
+  colour_values <- c(pal, "None" = "grey80")
 
   x_range <- range(locus_df$POS_num, na.rm = TRUE)
   chr_num <- unique(locus_df$CHR)[1]
