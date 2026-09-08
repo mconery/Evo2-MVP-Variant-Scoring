@@ -162,7 +162,16 @@ Identifies the 105 loci to map from Supplementary Table 11 of Verma et al.'s res
 Tests the memory limits on the number of variants that can be scored simultaneously with 8,192bp context window and then scores all 685k+ variants. 
 
 ### Step 3 — Prior Creation
-```bash
+Creates priors for each variant, w_i, such that w_i = exp(0.1 * (-delta_i)) where delta_i is the Evo 2 variant score. 
+
+### Step 4 — Matrix Making
+Generates LD matrices for each locus using 1000 Genomes plink files in GRCh37.
+
+### Step 5 — Fine Mapping
+Maps the loci using 1000 Genomes LD matrices and CARMA both with and without priors.
+
+### Step 6 - Collation and Synthesis
+Collates the results and generates output figure.
 Rscript timing_plot_script.R
 ```
 Produces three plots: parallelism strategy comparison, run time vs. context length, and chunk size vs. run time.
