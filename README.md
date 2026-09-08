@@ -6,6 +6,15 @@ A pipeline for scoring genetic variants from the Million Veteran Program (MVP) f
 
 ```
 Evo2-MVP-Variant-Scoring/
+├── Evo2_Priors_FM/                  # Fine-Mapping Experiment
+│   ├── carma                        # Scripts for running CARMA fine-mapping
+|   ├── collation                    # Scripts for collating results files
+│   ├── evo2_scoring                 # Scripts for testing and deploying Evo 2 at scale for all 685k+ variants
+│   ├── ld_matrices                  # Code for generating out-of-sample LD matrices from 1000G reference
+│   ├── loci_definition              # Scripts for defining loci from previous Verma et al. (2024) GWAS
+|   ├── priors                       # Scripts for converting Evo 2 scores into priors
+|   └── setup                        # Launcher scripts for configuring analysis output folders
+|
 ├── MVP_Low-High_Variant_Test/       # Discriminative performance experiment
 │   ├── mvp_variants_test.py         # Main Evo2 scoring script (prepare/process modes)
 │   ├── filter_and_match_variants.py # Filter MVP data and match high/low PIP variantstop
@@ -143,3 +152,18 @@ Produces three plots: parallelism strategy comparison, run time vs. context leng
 | `conservation_regression_plots.R` | 6 PNG files | PNG | Regression panels, forest plot, pairwise correlation plots, VIF bar chart, MAF vs Evo2 correlation, MAF-adjusted regression forest plot |
 | `timing_variants_test.py` | `timing_scores.*.csv` | CSV | Scored variants with timing metadata |
 | `timing_plot_script.R` | 3 PNG files | PNG | Parallelism, context length, chunk size timing plots |
+
+## Workflow: Mapping Test
+
+### Step 1 — Define Loci 
+Identifies the 105 loci to map from Supplementary Table 11 of Verma et al.'s results and extracts all variants residing in the loci
+
+### Step 2 — Evo 2 Scoring
+Tests the memory limits on the number of variants that can be scored simultaneously with 8,192bp context window and then scores all 685k+ variants. 
+
+### Step 3 — Prior Creation
+```bash
+Rscript timing_plot_script.R
+```
+Produces three plots: parallelism strategy comparison, run time vs. context length, and chunk size vs. run time.
+
