@@ -3,7 +3,7 @@
 # ============================================================================
 # Fits individual and joint logistic regressions predicting High vs Low PIP
 # status from three conservation metrics (phastCons, phyloP, GERP) and the
-# Evo2 7b-arc-longcontext delta score (16384 bp context window).
+# Evo2 7b-arc-longcontext delta score (16,384 bp context window).
 #
 # Produces two plots in the same style as mvp_plot_script.R:
 #   1. conservation_individual_regressions.png  — 2x2 violin panel (individual models)
@@ -63,7 +63,7 @@ sig_stars <- function(p) {
 message("Loading conservation scores...")
 conservation <- read_csv(conservation_file, show_col_types = FALSE)
 
-message("Loading Evo2 scores (7b-arc-longcontext, 16384 bp)...")
+message("Loading Evo2 scores (7b-arc-longcontext, 16,384 bp)...")
 evo2 <- read_csv(evo2_file, show_col_types = FALSE) %>%
   select(`MVP ID`, evo2_delta_score, class)
 
@@ -118,7 +118,7 @@ predictors <- list(
   phastCons100way  = list(col = "phastCons100way",  label = "phastCons (100-way vertebrate)"),
   phyloP100way     = list(col = "phyloP100way",     label = "phyloP (100-way vertebrate)"),
   GERP_RS          = list(col = "GERP_RS",          label = "GERP++ RS"),
-  evo2_delta_score = list(col = "evo2_delta_score", label = "Evo2 Delta Score\n(7b-arc-longcontext, 16384 bp)")
+  evo2_delta_score = list(col = "evo2_delta_score", label = "Evo2 Delta Score\n(7b-arc-longcontext, 16,384 bp)")
 )
 
 message("\n--- Individual logistic regressions ---")
@@ -412,9 +412,9 @@ pairs_def <- list(
   list(x = "phastCons100way",  y = "phyloP100way",     x_lab = "phastCons (100-way vertebrate)", y_lab = "phyloP (100-way vertebrate)",             pair_type = "Conservation vs Conservation"),
   list(x = "phastCons100way",  y = "GERP_RS",           x_lab = "phastCons (100-way vertebrate)", y_lab = "GERP++ RS",                               pair_type = "Conservation vs Conservation"),
   list(x = "phyloP100way",     y = "GERP_RS",           x_lab = "phyloP (100-way vertebrate)",    y_lab = "GERP++ RS",                               pair_type = "Conservation vs Conservation"),
-  list(x = "phastCons100way",  y = "evo2_delta_score",  x_lab = "phastCons (100-way vertebrate)", y_lab = "Evo2 Delta Score\n(7b-arc-longcontext, 16384 bp)", pair_type = "Conservation vs Evo2"),
-  list(x = "phyloP100way",     y = "evo2_delta_score",  x_lab = "phyloP (100-way vertebrate)",    y_lab = "Evo2 Delta Score\n(7b-arc-longcontext, 16384 bp)", pair_type = "Conservation vs Evo2"),
-  list(x = "GERP_RS",          y = "evo2_delta_score",  x_lab = "GERP++ RS",                      y_lab = "Evo2 Delta Score\n(7b-arc-longcontext, 16384 bp)", pair_type = "Conservation vs Evo2")
+  list(x = "phastCons100way",  y = "evo2_delta_score",  x_lab = "phastCons (100-way vertebrate)", y_lab = "Evo2 Delta Score\n(7b-arc-longcontext, 16,384 bp)", pair_type = "Conservation vs Evo2"),
+  list(x = "phyloP100way",     y = "evo2_delta_score",  x_lab = "phyloP (100-way vertebrate)",    y_lab = "Evo2 Delta Score\n(7b-arc-longcontext, 16,384 bp)", pair_type = "Conservation vs Evo2"),
+  list(x = "GERP_RS",          y = "evo2_delta_score",  x_lab = "GERP++ RS",                      y_lab = "Evo2 Delta Score\n(7b-arc-longcontext, 16,384 bp)", pair_type = "Conservation vs Evo2")
 )
 
 make_corr_panel <- function(pair) {
