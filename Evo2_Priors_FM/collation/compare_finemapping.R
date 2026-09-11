@@ -22,11 +22,11 @@
 #   cs_comparison.tsv           -- one row per locus × CS signal
 #   s11_highpip_capture.tsv     -- one row per original high-PIP (>0.95) signal
 #   aggregate_metrics.txt       -- printed summary statistics + Wilcoxon tests
-#   plots/cs_size_violin.pdf    -- includes paired Wilcoxon p-value
-#   plots/pip_scatter.pdf
-#   plots/jaccard_histogram.pdf
-#   plots/venn_overlap.pdf      -- pooled CS-variant overlap: S11 vs uniform vs Evo2
-#   plots/locuszoom/{locus_id}_locuszoom.pdf
+#   plots/cs_size_violin.jpg    -- includes paired Wilcoxon p-value (300dpi)
+#   plots/pip_scatter.jpg
+#   plots/jaccard_histogram.jpg
+#   plots/venn_overlap.jpg      -- pooled CS-variant overlap: S11 vs uniform vs Evo2
+#   plots/locuszoom/{locus_id}_locuszoom.jpg
 #                               -- one per locus, 3 stacked panels: GWAS -log10(p),
 #                                  uniform-prior PIP, Evo2-prior PIP, sharing a
 #                                  genomic-position x-axis
@@ -38,7 +38,6 @@ suppressPackageStartupMessages({
   library(stringr)
   library(readr)
   library(purrr)
-  library(ggvenn)
   library(patchwork)
 })
 
@@ -554,7 +553,7 @@ plot_data <- bind_rows(
 # base ggplot2's annotate() rather than the ggsignif package, to avoid an
 # extra dependency.
 cs_signif_label <- if (!is.null(wt_cs)) {
-  sprintf("p = %s", format.pval(wt_cs$p.value, digits = 3, eps = 1e-4))
+  sprintf("p = %s", format.pval(wt_cs$p.value, digits = 2, eps = 1e-4))
 } else {
   "p = NA"
 }
@@ -576,7 +575,7 @@ p1 <- ggplot(plot_data, aes(x = approach_label, y = total_cs_size, fill = approa
   labs(x = "Approach", y = "Total CS size (variants)") +
   theme_bw(base_size = 12) +
   theme(legend.position = "none")
-ggsave(paste0(OUT_DIR, "/plots/cs_size_violin.pdf"), p1, width = 5, height = 5)
+ggsave(paste0(OUT_DIR, "/plots/cs_size_violin.jpg"), p1, width = 5, height = 5, dpi = 300)
 
 # PIP scatter: uniform vs Evo2
 if (nrow(per_locus) > 0 && all(c("top_pip_uniform", "top_pip_evo2") %in% colnames(per_locus))) {
@@ -587,7 +586,7 @@ if (nrow(per_locus) > 0 && all(c("top_pip_uniform", "top_pip_evo2") %in% colname
     labs(x = "Top PIP (Uniform Prior)", y = "Top PIP (Evo2 Prior)") +
     coord_equal(xlim = c(0, 1), ylim = c(0, 1)) +
     theme_bw(base_size = 12)
-  ggsave(paste0(OUT_DIR, "/plots/pip_scatter.pdf"), p2, width = 5, height = 5)
+  ggsave(paste0(OUT_DIR, "/plots/pip_scatter.jpg"), p2, width = 5, height = 5, dpi = 300)
 }
 
 # Jaccard histogram
@@ -597,7 +596,7 @@ if (nrow(jaccard_df) > 0) {
     geom_histogram(bins = 20, fill = "#4393C3", colour = "white") +
     labs(x = "Jaccard index", y = "Locus count") +
     theme_bw(base_size = 12)
-  ggsave(paste0(OUT_DIR, "/plots/jaccard_histogram.pdf"), p3, width = 5, height = 4)
+  ggsave(paste0(OUT_DIR, "/plots/jaccard_histogram.jpg"), p3, width = 5, height = 4, dpi = 300)
 }
 
 # Venn diagram: overlap between original S11 CS variants and each new
@@ -610,18 +609,85 @@ uniform_all_variants <- res_no  %>% filter(CS_ID > 0) %>% pull(pos_id) %>% na.om
 evo2_all_variants    <- res_evo %>% filter(CS_ID > 0) %>% pull(pos_id) %>% na.omit() %>% unique()
 
 if (length(orig_all_variants) > 0 && length(uniform_all_variants) > 0 && length(evo2_all_variants) > 0) {
-  venn_sets <- list(
-    "Original (S11)" = orig_all_variants,
-    "Uniform Prior"  = uniform_all_variants,
-    "Evo2 Prior"     = evo2_all_variants
+
+  # ---- Precompute the 7 region counts + percentages ourselves --------------
+  # ggvenn's built-in percentage labels round to a fixed number of DECIMAL
+  # PLACES (its `digits` argument), which does not translate into a fixed
+  # number of SIGNIFICANT figures across the whole range of possible
+  # percentages (e.g. digits=0 gives 1 sig fig for "3%" but 2 for "34%").
+  # So instead of leaning on that formatting, we compute the region counts
+  # ourselves (exact integers, left unrounded) and independently derive
+  # percentages of the pooled total, rounded to 2 significant figures with
+  # signif(), then draw the diagram manually so we have full control over
+  # both.
+  A <- orig_all_variants; B <- uniform_all_variants; C <- evo2_all_variants
+
+  region_counts <- c(
+    A_only  = length(setdiff(A, union(B, C))),
+    B_only  = length(setdiff(B, union(A, C))),
+    C_only  = length(setdiff(C, union(A, B))),
+    AB_only = length(setdiff(intersect(A, B), C)),
+    AC_only = length(setdiff(intersect(A, C), B)),
+    BC_only = length(setdiff(intersect(B, C), A)),
+    ABC     = length(Reduce(intersect, list(A, B, C)))
   )
-  p4 <- ggvenn(venn_sets,
-               fill_color = c("#66C2A5", "#4393C3", "#D6604D"),
-               stroke_size = 0.6,
-               set_name_size = 4,
-               text_size = 4) +
-    theme(legend.position = "none")
-  ggsave(paste0(OUT_DIR, "/plots/venn_overlap.pdf"), p4, width = 6, height = 6)
+  venn_total <- sum(region_counts)  # = |A ∪ B ∪ C|, since the 7 regions partition it
+
+  sig2_pct <- function(n) paste0(format(signif(100 * n / venn_total, 2), trim = TRUE), "%")
+
+  venn_labels <- data.frame(
+    region = names(region_counts),
+    label  = paste0(unname(region_counts), "\n(", unname(sapply(region_counts, sig2_pct)), ")")
+  )
+
+  # ---- Manual 3-circle layout (independent of any plotting package's
+  # internal geometry, so we know exactly what numbers land where) ----------
+  circle_pts <- function(cx, cy, r, n = 200) {
+    t <- seq(0, 2 * pi, length.out = n)
+    data.frame(x = cx + r * cos(t), y = cy + r * sin(t))
+  }
+  centers <- list(
+    "Original (S11)" = c(x = -0.8, y = 0.5),
+    "Uniform Prior"  = c(x =  0.8, y = 0.5),
+    "Evo2 Prior"     = c(x =  0.0, y = -0.8)
+  )
+  circle_r <- 1.5
+
+  circles_df <- purrr::imap_dfr(centers, function(ctr, nm) {
+    cbind(circle_pts(ctr["x"], ctr["y"], circle_r), set = nm)
+  })
+
+  set_name_pos <- data.frame(
+    set = names(centers),
+    x   = c(centers[[1]]["x"], centers[[2]]["x"], centers[[3]]["x"]),
+    y   = c(centers[[1]]["y"] + circle_r + 0.25,
+            centers[[2]]["y"] + circle_r + 0.25,
+            centers[[3]]["y"] - circle_r - 0.25)
+  )
+
+  label_pos <- data.frame(
+    region = c("A_only", "B_only", "C_only", "AB_only", "AC_only", "BC_only", "ABC"),
+    x = c(-1.5, 1.5, 0, 0, -0.9, 0.9, 0),
+    y = c(1.0, 1.0, -1.9, 1.0, -0.55, -0.55, 0.0)
+  ) %>%
+    left_join(venn_labels, by = "region")
+
+  p4 <- ggplot() +
+    geom_polygon(data = circles_df, aes(x = x, y = y, fill = set, group = set),
+                 alpha = 0.5, colour = "black", linewidth = 0.6) +
+    geom_text(data = set_name_pos, aes(x = x, y = y, label = set),
+              size = 4, fontface = "bold") +
+    geom_text(data = label_pos, aes(x = x, y = y, label = label),
+              size = 4, lineheight = 0.9) +
+    scale_fill_manual(values = c("Original (S11)" = "#66C2A5",
+                                  "Uniform Prior"  = "#4393C3",
+                                  "Evo2 Prior"     = "#D6604D")) +
+    coord_fixed(clip = "off") +
+    theme_void() +
+    theme(legend.position = "none",
+          plot.margin = margin(20, 20, 20, 20))
+
+  ggsave(paste0(OUT_DIR, "/plots/venn_overlap.jpg"), p4, width = 6, height = 6, dpi = 300)
 } else {
   warning("Skipped Venn diagram: at least one of the three variant sets (S11, uniform, Evo2) is empty.")
 }
@@ -735,7 +801,7 @@ for (lid in loci_with_both) {
 
   combined <- p_top / p_mid / p_bot
 
-  ggsave(paste0(locuszoom_dir, "/", lid, "_locuszoom.pdf"), combined, width = 8, height = 10)
+  ggsave(paste0(locuszoom_dir, "/", lid, "_locuszoom.jpg"), combined, width = 8, height = 10, dpi = 300)
   n_locuszoom_written <- n_locuszoom_written + 1
 }
 
