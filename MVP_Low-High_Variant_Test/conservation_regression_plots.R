@@ -75,6 +75,20 @@ sig_stars <- function(p) {
   case_when(p < 0.001 ~ "***", p < 0.01 ~ "**", p < 0.05 ~ "*", TRUE ~ "ns")
 }
 
+# Format a number to exactly 2 SIGNIFICANT FIGURES (not merely 2 decimal
+# places) for display on a plot -- e.g. 0.034 -> "0.034", 12.345 -> "12",
+# 1.567 -> "1.6". Vectorised. Set signed = TRUE to prefix a "+" on positive
+# values (mirrors the old sprintf("%+...") calls used for beta coefficients).
+format_sig2 <- function(x, signed = FALSE) {
+  vapply(x, function(v) {
+    if (is.na(v)) return(NA_character_)
+    if (v == 0) return(if (signed) "+0.0" else "0.0")
+    rounded  <- signif(v, 2)
+    decimals <- max(2 - floor(log10(abs(rounded))) - 1, 0)
+    formatC(rounded, format = "f", digits = decimals, flag = if (signed) "+" else "")
+  }, character(1))
+}
+
 # ============================================================================
 # STEP 0: LOAD CONSERVATION SCORES (shared across all Evo2 context windows)
 # ============================================================================
@@ -258,7 +272,7 @@ run_context_analysis <- function(evo2_file, context_bp, conservation, output_dir
     geom_col(width = 0.6, color = "white") +
     geom_hline(yintercept = 5,  linetype = "dashed", color = "orange",    linewidth = 0.8) +
     geom_hline(yintercept = 10, linetype = "dashed", color = "firebrick", linewidth = 0.8) +
-    geom_text(aes(label = sprintf("%.2f", vif)),
+    geom_text(aes(label = format_sig2(vif)),
               vjust = -0.4, size = 4, fontface = "bold") +
     annotate("text", x = Inf, y = 5,  label = "VIF = 5",  hjust = 1.1, vjust = -0.4,
              color = "orange",    size = 3.5) +
@@ -299,7 +313,7 @@ run_context_analysis <- function(evo2_file, context_bp, conservation, output_dir
   
   make_violin_panel <- function(pred_name, pred_label, p_label_str, beta_val) {
     annotation_str <- paste0(
-      "\u03b2 = ", sprintf("%+.2f", beta_val), "\n",
+      "\u03b2 = ", format_sig2(beta_val, signed = TRUE), "\n",
       p_label_str
     )
     ggplot(df_complete,
@@ -390,7 +404,7 @@ run_context_analysis <- function(evo2_file, context_bp, conservation, output_dir
   side_df <- forest_df %>%
     mutate(
       side_label = paste0(
-        "\u03b2 = ", sprintf("%+.2f", beta), "\n",
+        "\u03b2 = ", format_sig2(beta, signed = TRUE), "\n",
         p_label, "  ", stars
       )
     )
@@ -458,7 +472,7 @@ run_context_analysis <- function(evo2_file, context_bp, conservation, output_dir
     y_col <- pair$y
     
     ct    <- cor.test(df_complete[[x_col]], df_complete[[y_col]], method = "pearson")
-    r_val <- sprintf("r = %.2f", ct$estimate)
+    r_val <- paste0("r = ", format_sig2(ct$estimate))
     p_val <- format_pval(ct$p.value)
     annot <- paste0(r_val, "\n", p_val)
     
@@ -536,7 +550,7 @@ run_context_analysis <- function(evo2_file, context_bp, conservation, output_dir
   })
   
   # --- 9b: Left panel — All variants ---
-  cor_all_label <- paste0("r = ", sprintf("%.2f", cor_results$r[1]),
+  cor_all_label <- paste0("r = ", format_sig2(cor_results$r[1]),
                           "     ", format_pval(cor_results$p[1]),
                           "     n = ", cor_results$n[1])
   
@@ -568,7 +582,7 @@ run_context_analysis <- function(evo2_file, context_bp, conservation, output_dir
     filter(subset %in% facet_order) %>%
     mutate(
       subset = factor(subset, levels = facet_order),
-      label  = paste0("r = ", sprintf("%.2f", r), "     ", format_pval(p),
+      label  = paste0("r = ", format_sig2(r), "     ", format_pval(p),
                       "     n = ", n)
     )
   
@@ -638,7 +652,7 @@ run_context_analysis <- function(evo2_file, context_bp, conservation, output_dir
   })
   
   # --- 10b: Left panel — All variants ---
-  cor_log_all_label <- paste0("r = ", sprintf("%.2f", cor_results_log$r[1]),
+  cor_log_all_label <- paste0("r = ", format_sig2(cor_results_log$r[1]),
                               "     ", format_pval(cor_results_log$p[1]),
                               "     n = ", cor_results_log$n[1])
   
@@ -669,7 +683,7 @@ run_context_analysis <- function(evo2_file, context_bp, conservation, output_dir
     filter(subset %in% facet_order) %>%
     mutate(
       subset = factor(subset, levels = facet_order),
-      label  = paste0("r = ", sprintf("%.2f", r), "     ", format_pval(p),
+      label  = paste0("r = ", format_sig2(r), "     ", format_pval(p),
                       "     n = ", n)
     )
   
@@ -795,7 +809,7 @@ run_context_analysis <- function(evo2_file, context_bp, conservation, output_dir
   
   # --- 11d: Side text panel ---
   maf_side_df <- maf_forest_df %>%
-    mutate(side_label = paste0("\u03b2 = ", sprintf("%+.2f", beta), "\n",
+    mutate(side_label = paste0("\u03b2 = ", format_sig2(beta, signed = TRUE), "\n",
                                p_label, "  ", stars))
   
   plot_maf_side <- ggplot(maf_side_df, aes(x = 0, y = label)) +

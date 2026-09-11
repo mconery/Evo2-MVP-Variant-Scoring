@@ -14,6 +14,20 @@ library(ggplot2)
 library(ggpubr)  # For statistical annotations
 library(scales)  # For pseudo-log transformation
 
+# Format a number to exactly 2 SIGNIFICANT FIGURES (not merely 2 decimal
+# places) for display on a plot -- e.g. 0.034 -> "0.034", 12.345 -> "12",
+# 1.567 -> "1.6". Vectorised. Set signed = TRUE to prefix a "+" on positive
+# values (mirrors sprintf("%+...") calls used for signed quantities).
+format_sig2 <- function(x, signed = FALSE) {
+  vapply(x, function(v) {
+    if (is.na(v)) return(NA_character_)
+    if (v == 0) return(if (signed) "+0.0" else "0.0")
+    rounded  <- signif(v, 2)
+    decimals <- max(2 - floor(log10(abs(rounded))) - 1, 0)
+    formatC(rounded, format = "f", digits = decimals, flag = if (signed) "+" else "")
+  }, character(1))
+}
+
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
@@ -192,8 +206,9 @@ calculate_median_pct_diff <- function(data) {
       pct_label = case_when(
         is.na(median_high) | is.na(median_low) ~ "Δmedian: N/A",
         abs(median_low) < 1e-10               ~ "Δmedian: N/A",
-        TRUE ~ sprintf("Δmedian: %+.0f%%",
-                       (median_high - median_low) / abs(median_low) * 100)
+        TRUE ~ paste0("Δmedian: ",
+                      format_sig2((median_high - median_low) / abs(median_low) * 100, signed = TRUE),
+                      "%")
       )
     )
 }
@@ -207,18 +222,18 @@ calculate_median_pct_diff <- function(data) {
 compute_roc_data <- function(data) {
   groups <- data %>% distinct(model_size_factor, context_size_factor)
   result_list <- vector("list", nrow(groups))
-
+  
   for (i in seq_len(nrow(groups))) {
     ms_f <- as.character(groups$model_size_factor[i])
     cs_f <- as.character(groups$context_size_factor[i])
-
+    
     grp <- data %>%
       filter(as.character(model_size_factor) == ms_f,
              as.character(context_size_factor) == cs_f)
-
+    
     n       <- nrow(grp)
     classes <- unique(grp$class)
-
+    
     degenerate <- n < 5 || length(classes) < 2
     if (!degenerate) {
       ord   <- order(grp$evo2_delta_score)
@@ -227,7 +242,7 @@ compute_roc_data <- function(data) {
       n_neg <- n - n_pos
       degenerate <- n_pos == 0 || n_neg == 0
     }
-
+    
     if (degenerate) {
       result_list[[i]] <- data.frame(
         model_size_factor = ms_f, context_size_factor = cs_f,
@@ -237,30 +252,30 @@ compute_roc_data <- function(data) {
       )
       next
     }
-
+    
     tpr_vals <- cumsum(y) / n_pos
     fpr_vals <- cumsum(1L - y) / n_neg
-
+    
     # Deduplicate at tied-score boundaries
     boundary <- c(diff(grp$evo2_delta_score[ord]) != 0, TRUE)
     tpr_vals <- tpr_vals[boundary]
     fpr_vals <- fpr_vals[boundary]
-
+    
     fpr_vals <- c(0, fpr_vals)
     tpr_vals <- c(0, tpr_vals)
-
+    
     auc_roc <- sum(diff(fpr_vals) *
-                   (tpr_vals[-1] + tpr_vals[-length(tpr_vals)]) / 2)
-
+                     (tpr_vals[-1] + tpr_vals[-length(tpr_vals)]) / 2)
+    
     result_list[[i]] <- data.frame(
       model_size_factor = ms_f, context_size_factor = cs_f,
       fpr = fpr_vals, tpr = tpr_vals,
       auc_roc = auc_roc,
-      auc_label = sprintf("AUC = %.2f", auc_roc),
+      auc_label = paste0("AUC = ", format_sig2(auc_roc)),
       stringsAsFactors = FALSE
     )
   }
-
+  
   out <- bind_rows(result_list)
   out$model_size_factor   <- factor(out$model_size_factor,
                                     levels = levels(data$model_size_factor))
@@ -278,19 +293,19 @@ compute_roc_data <- function(data) {
 compute_pr_data <- function(data) {
   groups <- data %>% distinct(model_size_factor, context_size_factor)
   result_list <- vector("list", nrow(groups))
-
+  
   for (i in seq_len(nrow(groups))) {
     ms_f <- as.character(groups$model_size_factor[i])
     cs_f <- as.character(groups$context_size_factor[i])
-
+    
     grp <- data %>%
       filter(as.character(model_size_factor) == ms_f,
              as.character(context_size_factor) == cs_f)
-
+    
     n       <- nrow(grp)
     classes <- unique(grp$class)
     n_pos   <- sum(grp$class == "High PIP")
-
+    
     if (n < 5 || length(classes) < 2 || n_pos == 0) {
       result_list[[i]] <- data.frame(
         model_size_factor = ms_f, context_size_factor = cs_f,
@@ -300,28 +315,28 @@ compute_pr_data <- function(data) {
       )
       next
     }
-
+    
     ord            <- order(grp$evo2_delta_score)
     y              <- as.integer(grp$class[ord] == "High PIP")
     recall_vals    <- cumsum(y) / n_pos
     precision_vals <- cumsum(y) / seq_len(n)
-
+    
     recall_vals    <- c(0, recall_vals)
     precision_vals <- c(1, precision_vals)
-
+    
     baseline <- n_pos / n
     auc_pr   <- sum(diff(recall_vals) *
-                    (precision_vals[-1] + precision_vals[-length(precision_vals)]) / 2)
-
+                      (precision_vals[-1] + precision_vals[-length(precision_vals)]) / 2)
+    
     result_list[[i]] <- data.frame(
       model_size_factor = ms_f, context_size_factor = cs_f,
       recall = recall_vals, precision = precision_vals,
       baseline = baseline, auc_pr = auc_pr,
-      auc_label = sprintf("AUC-PR = %.2f", auc_pr),
+      auc_label = paste0("AUC-PR = ", format_sig2(auc_pr)),
       stringsAsFactors = FALSE
     )
   }
-
+  
   out <- bind_rows(result_list)
   out$model_size_factor   <- factor(out$model_size_factor,
                                     levels = levels(data$model_size_factor))
@@ -378,39 +393,39 @@ create_faceted_boxplot <- function(data, vep_filter = NULL, title = NULL,
       model_size_factor = factor(model_size, levels = c("1b", "7b", "7b Long-Context", "40b", "40b Long-Context")),
       context_size_factor = factor(ifelse(context_size!=1000000, paste0(prettyNum(context_size, big.mark=","), " bp"), "1 Mb"), levels = ifelse(sort(unique(context_size))!=1000000, paste0(prettyNum(sort(unique(context_size)), big.mark=","), " bp"), "1 Mb"))
     )
-
+  
   # Optionally restrict to long-context models only
   if (long_context_only) {
     data <- data %>% filter(grepl("Long-Context", model_size))
     if (nrow(data) == 0) stop("No long-context model data found")
   }
-
+  
   # Optionally cap context size
   if (!is.null(max_context_size)) {
     data <- data %>% filter(context_size <= max_context_size)
     if (nrow(data) == 0) stop("No data remaining after context size filter (<= ", max_context_size, ")")
   }
-
+  
   # Calculate Wilcoxon test p-values and median percentage differences
   message("Calculating Wilcoxon test p-values...")
   pvalues <- calculate_wilcoxon_pvalues(data)
-
+  
   message("Calculating median percentage differences...")
   median_diffs <- calculate_median_pct_diff(data)
-
+  
   # Build separate annotation dataframes for top (p-value) and bottom (median diff)
   annotations <- pvalues %>%
     mutate(
       model_size_factor = factor(model_size, levels = c("1b", "7b", "7b Long-Context", "40b", "40b Long-Context")),
       context_size_factor = factor(ifelse(context_size!=1000000, paste0(prettyNum(context_size, big.mark=","), " bp"), "1 Mb"), levels = ifelse(sort(unique(context_size))!=1000000, paste0(prettyNum(sort(unique(context_size)), big.mark=","), " bp"), "1 Mb"))
     )
-
+  
   median_annot <- median_diffs %>%
     mutate(
       model_size_factor = factor(model_size, levels = c("1b", "7b", "7b Long-Context", "40b", "40b Long-Context")),
       context_size_factor = factor(ifelse(context_size!=1000000, paste0(prettyNum(context_size, big.mark=","), " bp"), "1 Mb"), levels = ifelse(sort(unique(context_size))!=1000000, paste0(prettyNum(sort(unique(context_size)), big.mark=","), " bp"), "1 Mb"))
     )
-
+  
   # Print p-values
   message("\nWilcoxon test results:")
   print(pvalues %>% select(model_size, context_size, p_value, significance))
@@ -499,32 +514,32 @@ create_faceted_roc_plot <- function(data, coding_filter = NULL, title = NULL,
   } else {
     if (is.null(title)) title <- "ROC Curves — Evo2 Delta Score\n(All Variants)"
   }
-
+  
   data <- data %>%
     mutate(
       model_size = str_replace_all(str_replace_all(str_replace_all(str_replace_all(model_size, "_", " "), "arc ", ""), "longcontext", "Long-Context"), "Long-Context", "LC"),
       model_size_factor = factor(model_size, levels = c("1b", "7b", "7b LC", "40b", "40b LC")),
       context_size_factor = factor(ifelse(context_size!=1000000, paste0(prettyNum(context_size, big.mark=","), " bp"), "1 Mb"), levels = ifelse(sort(unique(context_size))!=1000000, paste0(prettyNum(sort(unique(context_size)), big.mark=","), " bp"), "1 Mb"))
     )
-
+  
   if (long_context_only) {
     data <- data %>% filter(grepl("LC", model_size))
     if (nrow(data) == 0) stop("No long-context model data found")
   }
-
+  
   if (!is.null(max_context_size)) {
     data <- data %>% filter(context_size <= max_context_size)
     if (nrow(data) == 0) stop("No data remaining after context size filter")
   }
-
+  
   roc_df <- compute_roc_data(data)
-
+  
   auc_df <- roc_df %>%
     group_by(model_size_factor, context_size_factor) %>%
     slice(1) %>%
     ungroup() %>%
     select(model_size_factor, context_size_factor, auc_label)
-
+  
   ggplot(roc_df, aes(x = fpr, y = tpr)) +
     geom_line(color = "#08519c", linewidth = 0.9, na.rm = TRUE) +
     geom_abline(slope = 1, intercept = 0, linetype = "dashed",
@@ -576,38 +591,38 @@ create_faceted_pr_plot <- function(data, coding_filter = NULL, title = NULL,
   } else {
     if (is.null(title)) title <- "Precision-Recall Curves — Evo2 Delta Score\n(All Variants)"
   }
-
+  
   data <- data %>%
     mutate(
       model_size = str_replace_all(str_replace_all(str_replace_all(model_size, "_", " "), "arc ", ""), "longcontext", "Long-Context"),
       model_size_factor = factor(model_size, levels = c("1b", "7b", "7b Long-Context", "40b", "40b Long-Context")),
       context_size_factor = factor(ifelse(context_size!=1000000, paste0(prettyNum(context_size, big.mark=","), " bp"), "1 Mb"), levels = ifelse(sort(unique(context_size))!=1000000, paste0(prettyNum(sort(unique(context_size)), big.mark=","), " bp"), "1 Mb"))
     )
-
+  
   if (long_context_only) {
     data <- data %>% filter(grepl("Long-Context", model_size))
     if (nrow(data) == 0) stop("No long-context model data found")
   }
-
+  
   if (!is.null(max_context_size)) {
     data <- data %>% filter(context_size <= max_context_size)
     if (nrow(data) == 0) stop("No data remaining after context size filter")
   }
-
+  
   pr_df <- compute_pr_data(data)
-
+  
   auc_df <- pr_df %>%
     group_by(model_size_factor, context_size_factor) %>%
     slice(1) %>%
     ungroup() %>%
     select(model_size_factor, context_size_factor, auc_label)
-
+  
   baseline_df <- pr_df %>%
     group_by(model_size_factor, context_size_factor) %>%
     slice(1) %>%
     ungroup() %>%
     select(model_size_factor, context_size_factor, baseline)
-
+  
   ggplot(pr_df, aes(x = recall, y = precision)) +
     geom_line(color = "#08519c", linewidth = 0.9, na.rm = TRUE) +
     geom_hline(
@@ -678,37 +693,37 @@ build_collated_table <- function(data) {
   base_cols <- c("MVP ID", "RSID", "BP", "BP38", "VEP Annotation", "CHR",
                  "EAF Population", "Beta Population", "P-Value Population",
                  "Overall PIP", "CS-Level Pip", "mu", "Set")
-
+  
   # One copy of variant metadata (identical across all files)
   base <- data %>%
     filter(model_size == first(model_size), context_size == first(context_size)) %>%
     select(all_of(base_cols))
-
+  
   score_cols <- c("ref_log_probs", "var_log_probs", "evo2_delta_score")
-
+  
   combos <- data %>%
     distinct(model_size, context_size) %>%
     arrange(model_size, context_size) %>%
     filter(
       (grepl("longcontext", model_size) & context_size <= 524288) |
-      (!grepl("longcontext", model_size) & context_size <= 131072)
+        (!grepl("longcontext", model_size) & context_size <= 131072)
     )
-
+  
   message("Collating ", nrow(combos), " model/context combinations")
-
+  
   for (i in seq_len(nrow(combos))) {
     ms <- combos$model_size[i]
     cs <- combos$context_size[i]
     suffix <- paste0("_", ms, "_", cs, "bp")
-
+    
     scores <- data %>%
       filter(model_size == ms, context_size == cs) %>%
       select(`MVP ID`, all_of(score_cols)) %>%
       rename_with(~ paste0(.x, suffix), all_of(score_cols))
-
+    
     base <- base %>% left_join(scores, by = "MVP ID")
   }
-
+  
   return(base)
 }
 
@@ -739,12 +754,12 @@ main <- function() {
   message("\nStep 3: Creating plots...\n")
   message("Output directory: ", output_dir)
   message("Using pseudo-log scale with sigma = ", pseudolog_sigma)
-
+  
   for (lc_only in c(FALSE, TRUE)) {
     lc_suffix <- if (lc_only) "_long_context" else ""
     lc_label  <- if (lc_only) " (long-context models only)" else ""
     max_context <- if (lc_only) 524288 else 131072
-
+    
     # All variants
     message("Creating plot for all variants", lc_label, "...")
     plot_all <- create_faceted_boxplot(
@@ -755,7 +770,7 @@ main <- function() {
     save_plot(plot_all, paste0("evo2_scores_all_variants", lc_suffix),
               width = plot_width, height = plot_height,
               format = output_format, output_directory = output_dir)
-
+    
     # Coding / non-coding variants
     message("Creating coding/non-coding plots", lc_label, "...")
     for (coding_option in c("coding", "non-coding")) {
@@ -777,7 +792,7 @@ main <- function() {
         message("Error creating plot for ", coding_option, ": ", e$message)
       })
     }
-
+    
     # ROC curves
     message("Creating ROC curve plots", lc_label, "...")
     tryCatch({
@@ -792,7 +807,7 @@ main <- function() {
     }, error = function(e) {
       message("Error creating ROC (all variants): ", e$message)
     })
-
+    
     for (coding_option in c("coding", "non-coding")) {
       tryCatch({
         save_plot(
@@ -807,7 +822,7 @@ main <- function() {
         message("Error creating ROC (", coding_option, "): ", e$message)
       })
     }
-
+    
     # Precision-recall curves
     message("Creating precision-recall curve plots", lc_label, "...")
     tryCatch({
@@ -822,7 +837,7 @@ main <- function() {
     }, error = function(e) {
       message("Error creating PR (all variants): ", e$message)
     })
-
+    
     for (coding_option in c("coding", "non-coding")) {
       tryCatch({
         save_plot(
@@ -844,7 +859,7 @@ main <- function() {
   vep_subdir <- file.path(output_dir, "vep-level_predictions")
   vep_annotations <- sort(unique(results_data$`Grouped Annotation`[!is.na(results_data$`Grouped Annotation`)]))
   message("VEP annotations to plot: ", paste(vep_annotations, collapse = ", "))
-
+  
   for (vep_ann in vep_annotations) {
     safe_name <- tolower(gsub("[^A-Za-z0-9_]", "_", vep_ann))
     filename <- paste0("evo2_scores_vep_", safe_name, "_long_context")
@@ -863,11 +878,11 @@ main <- function() {
       message("Skipping ", vep_ann, ": ", e$message)
     })
   }
-
+  
   # Step 4: Build and save collated results table
   message("\nStep 4: Building collated results table...")
   collated <- build_collated_table(results_data)
-
+  
   # Join conservation scores (phastCons, phyloP, GERP) by MVP ID
   message("Adding conservation scores from: ", conservation_file)
   conservation <- read_csv(conservation_file, show_col_types = FALSE) %>%
@@ -877,12 +892,12 @@ main <- function() {
   n_with_conservation <- sum(!is.na(collated$phastCons100way))
   message("Conservation scores joined: ", n_with_conservation, "/", nrow(collated),
           " variants with phastCons100way")
-
+  
   collated_file <- file.path(output_dir, "evo2_scores_collated.csv")
   write_csv(collated, collated_file)
   message("Collated table saved to: ", collated_file)
   message("Dimensions: ", nrow(collated), " rows x ", ncol(collated), " columns")
-
+  
   message("\n=== Analysis Complete ===")
   message("All plots have been saved to: ", output_dir)
   

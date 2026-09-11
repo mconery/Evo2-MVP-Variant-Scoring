@@ -75,9 +75,23 @@ sig_stars <- function(p) {
   case_when(p < 0.001 ~ "***", p < 0.01 ~ "**", p < 0.05 ~ "*", TRUE ~ "ns")
 }
 
+# Format a number to exactly 2 SIGNIFICANT FIGURES (not merely 2 decimal
+# places) for display on a plot -- e.g. 0.034 -> "0.034", 12.345 -> "12",
+# 1.567 -> "1.6". Vectorised. Set signed = TRUE to prefix a "+" on positive
+# values (mirrors the old sprintf("%+...") calls used for beta coefficients).
+format_sig2 <- function(x, signed = FALSE) {
+  vapply(x, function(v) {
+    if (is.na(v)) return(NA_character_)
+    if (v == 0) return(if (signed) "+0.0" else "0.0")
+    rounded  <- signif(v, 2)
+    decimals <- max(2 - floor(log10(abs(rounded))) - 1, 0)
+    formatC(rounded, format = "f", digits = decimals, flag = if (signed) "+" else "")
+  }, character(1))
+}
+
 # Violin panel for a single predictor
 make_violin_panel <- function(pred_name, pred_label, p_label_str, beta_val, data, beta_prefix = "β") {
-  annotation_str <- paste0(beta_prefix, " = ", sprintf("%+.2f", beta_val), "\n", p_label_str)
+  annotation_str <- paste0(beta_prefix, " = ", format_sig2(beta_val, signed = TRUE), "\n", p_label_str)
   ggplot(data, aes(x = class, y = .data[[pred_name]], fill = class)) +
     geom_violin(trim = FALSE) +
     stat_summary(
@@ -135,7 +149,7 @@ make_forest_plot <- function(results_df, title_str,
   
   sdf <- fdf %>%
     mutate(side_label = paste0(
-      "β = ", sprintf("%+.2f", beta), "\n",
+      "β = ", format_sig2(beta, signed = TRUE), "\n",
       p_label, "  ", stars
     ))
   
@@ -343,7 +357,7 @@ run_context_analysis <- function(evo2_file, context_bp, df_func, output_dir) {
     geom_col(width = 0.6, color = "white") +
     geom_hline(yintercept = 5,  linetype = "dashed", color = "orange",    linewidth = 0.8) +
     geom_hline(yintercept = 10, linetype = "dashed", color = "firebrick", linewidth = 0.8) +
-    geom_text(aes(label = sprintf("%.3f", vif)), vjust = -0.4, size = 4, fontface = "bold") +
+    geom_text(aes(label = format_sig2(vif)), vjust = -0.4, size = 4, fontface = "bold") +
     annotate("text", x = Inf, y = 5,  label = "VIF = 5",  hjust = 1.1, vjust = -0.4,
              color = "orange",    size = 3.5) +
     annotate("text", x = Inf, y = 10, label = "VIF = 10", hjust = 1.1, vjust = -0.4,
@@ -588,7 +602,7 @@ run_context_analysis <- function(evo2_file, context_bp, df_func, output_dir) {
     geom_col(width = 0.6, color = "white") +
     geom_hline(yintercept = 5,  linetype = "dashed", color = "orange",    linewidth = 0.8) +
     geom_hline(yintercept = 10, linetype = "dashed", color = "firebrick", linewidth = 0.8) +
-    geom_text(aes(label = sprintf("%.3f", vif)), vjust = -0.4, size = 4, fontface = "bold") +
+    geom_text(aes(label = format_sig2(vif)), vjust = -0.4, size = 4, fontface = "bold") +
     annotate("text", x = Inf, y = 5,  label = "VIF = 5",  hjust = 1.1, vjust = -0.4,
              color = "orange",    size = 3.5) +
     annotate("text", x = Inf, y = 10, label = "VIF = 10", hjust = 1.1, vjust = -0.4,
@@ -647,7 +661,7 @@ run_context_analysis <- function(evo2_file, context_bp, df_func, output_dir) {
     scale_y_continuous(labels = percent_format(accuracy = 1),
                        expand = expansion(mult = c(0, 0.12))) +
     annotate("text", x = Inf, y = Inf,
-             label = paste0("Binary logistic OR = ", sprintf("%.2f", ccre_or),
+             label = paste0("Binary logistic OR = ", format_sig2(ccre_or),
                             "\n", format_pval(ccre_pval), "  ", sig_stars(ccre_pval),
                             "\nChi-sq p", format_pval(chisq_ccre$p.value)),
              hjust = 1.05, vjust = 1.3, size = 4.5, fontface = "bold", lineheight = 0.9) +
@@ -719,7 +733,7 @@ run_context_analysis <- function(evo2_file, context_bp, df_func, output_dir) {
   
   make_corr_panel <- function(x_col, y_col, x_lab, y_lab, data) {
     ct    <- cor.test(data[[x_col]], data[[y_col]], method = "pearson")
-    annot <- paste0("r = ", sprintf("%.2f", ct$estimate), "\n", format_pval(ct$p.value))
+    annot <- paste0("r = ", format_sig2(ct$estimate), "\n", format_pval(ct$p.value))
     ggplot(data, aes(x = .data[[x_col]], y = .data[[y_col]], color = class)) +
       geom_point(alpha = 0.4, size = 1.2) +
       geom_smooth(method = "lm", se = TRUE, color = "black", linewidth = 0.8) +
@@ -771,7 +785,7 @@ run_context_analysis <- function(evo2_file, context_bp, df_func, output_dir) {
   
   plot_heatmap <- ggplot(cor_long, aes(x = x, y = y, fill = r)) +
     geom_tile(color = "white", linewidth = 0.5) +
-    geom_text(aes(label = sprintf("%.2f", r)), size = 3.5, fontface = "bold") +
+    geom_text(aes(label = format_sig2(r)), size = 3.5, fontface = "bold") +
     scale_fill_gradient2(low = col_low, mid = "white", high = col_high,
                          midpoint = 0, limits = c(-1, 1), name = "Pearson r") +
     labs(title = "Missense Score Correlation Matrix\n(including Evo2 Delta Score)",
@@ -821,7 +835,7 @@ run_context_analysis <- function(evo2_file, context_bp, df_func, output_dir) {
   })
   
   # Panel A: all variants
-  cor_all_label <- paste0("r = ", sprintf("%.2f", cor_maf_evo2$r[1]),
+  cor_all_label <- paste0("r = ", format_sig2(cor_maf_evo2$r[1]),
                           "     ", format_pval(cor_maf_evo2$p[1]),
                           "     n = ", cor_maf_evo2$n[1])
   
@@ -850,7 +864,7 @@ run_context_analysis <- function(evo2_file, context_bp, df_func, output_dir) {
     filter(subset %in% facet_order) %>%
     mutate(
       subset = factor(subset, levels = facet_order),
-      label  = paste0("r = ", sprintf("%.2f", r), "     ",
+      label  = paste0("r = ", format_sig2(r), "     ",
                       format_pval(p), "     n = ", n)
     )
   
@@ -977,7 +991,7 @@ run_context_analysis <- function(evo2_file, context_bp, df_func, output_dir) {
     )
   
   maf_side_df <- maf_cmp_df %>%
-    mutate(side_label = paste0("β = ", sprintf("%+.2f", beta), "\n",
+    mutate(side_label = paste0("β = ", format_sig2(beta, signed = TRUE), "\n",
                                p_label, "  ", stars))
   
   plot_maf_side <- ggplot(maf_side_df, aes(x = 0, y = label)) +
