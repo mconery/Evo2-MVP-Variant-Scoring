@@ -575,7 +575,7 @@ p1 <- ggplot(plot_data, aes(x = approach_label, y = total_cs_size, fill = approa
   labs(x = "Approach", y = "Total CS size (variants)") +
   theme_bw(base_size = 12) +
   theme(legend.position = "none")
-ggsave(paste0(OUT_DIR, "/plots/cs_size_violin.jpg"), p1, width = 5, height = 5, dpi = 300)
+ggsave(paste0(OUT_DIR, "/plots/cs_size_violin.jpg"), p1, width = 5, height = 5, dpi = 300, bg = "white")
 
 # PIP scatter: uniform vs Evo2
 if (nrow(per_locus) > 0 && all(c("top_pip_uniform", "top_pip_evo2") %in% colnames(per_locus))) {
@@ -586,7 +586,7 @@ if (nrow(per_locus) > 0 && all(c("top_pip_uniform", "top_pip_evo2") %in% colname
     labs(x = "Top PIP (Uniform Prior)", y = "Top PIP (Evo2 Prior)") +
     coord_equal(xlim = c(0, 1), ylim = c(0, 1)) +
     theme_bw(base_size = 12)
-  ggsave(paste0(OUT_DIR, "/plots/pip_scatter.jpg"), p2, width = 5, height = 5, dpi = 300)
+  ggsave(paste0(OUT_DIR, "/plots/pip_scatter.jpg"), p2, width = 5, height = 5, dpi = 300, bg = "white")
 }
 
 # Jaccard histogram
@@ -596,7 +596,7 @@ if (nrow(jaccard_df) > 0) {
     geom_histogram(bins = 20, fill = "#4393C3", colour = "white") +
     labs(x = "Jaccard index", y = "Locus count") +
     theme_bw(base_size = 12)
-  ggsave(paste0(OUT_DIR, "/plots/jaccard_histogram.jpg"), p3, width = 5, height = 4, dpi = 300)
+  ggsave(paste0(OUT_DIR, "/plots/jaccard_histogram.jpg"), p3, width = 5, height = 4, dpi = 300, bg = "white")
 }
 
 # Venn diagram: overlap between original S11 CS variants and each new
@@ -687,7 +687,7 @@ if (length(orig_all_variants) > 0 && length(uniform_all_variants) > 0 && length(
     theme(legend.position = "none",
           plot.margin = margin(20, 20, 20, 20))
 
-  ggsave(paste0(OUT_DIR, "/plots/venn_overlap.jpg"), p4, width = 6, height = 6, dpi = 300)
+  ggsave(paste0(OUT_DIR, "/plots/venn_overlap.jpg"), p4, width = 6, height = 6, dpi = 300, bg = "white")
 } else {
   warning("Skipped Venn diagram: at least one of the three variant sets (S11, uniform, Evo2) is empty.")
 }
@@ -801,7 +801,7 @@ for (lid in loci_with_both) {
 
   combined <- p_top / p_mid / p_bot
 
-  ggsave(paste0(locuszoom_dir, "/", lid, "_locuszoom.jpg"), combined, width = 8, height = 10, dpi = 300)
+  ggsave(paste0(locuszoom_dir, "/", lid, "_locuszoom.jpg"), combined, width = 8, height = 10, dpi = 300, bg = "white")
   n_locuszoom_written <- n_locuszoom_written + 1
 }
 
