@@ -22,15 +22,16 @@
 #   cs_comparison.tsv           -- one row per locus × CS signal
 #   s11_highpip_capture.tsv     -- one row per original high-PIP (>0.95) signal
 #   aggregate_metrics.txt       -- printed summary statistics + Wilcoxon tests
-#   plots/cs_size_violin.tiff    -- includes paired Wilcoxon p-value (300dpi tiff)
-#   plots/pip_scatter.tiff
-#   plots/jaccard_histogram.tiff
-#   plots/venn_overlap.tiff      -- pooled CS-variant overlap: S11 vs uniform vs Evo2
-#   plots/locuszoom/{locus_id}_locuszoom.tiff
+#   plots/cs_size_violin.pdf    -- includes paired Wilcoxon p-value
+#   plots/pip_scatter.pdf
+#   plots/jaccard_histogram.pdf
+#   plots/venn_overlap.pdf      -- pooled CS-variant overlap: S11 vs uniform vs Evo2
+#   plots/locuszoom/{locus_id}_locuszoom.pdf
 #                               -- one per locus, 3 stacked panels: GWAS -log10(p),
 #                                  uniform-prior PIP, Evo2-prior PIP, sharing a
 #                                  genomic-position x-axis
-#   (all plots are written as 300 dpi TIFFs)
+#   (all plots are written as vector PDFs; dpi = 300 is passed through for any
+#    rasterized elements, e.g. if a typesetter rasterizes the PDF on intake)
 ################################################################################
 
 suppressPackageStartupMessages({
@@ -576,7 +577,7 @@ p1 <- ggplot(plot_data, aes(x = approach_label, y = total_cs_size, fill = approa
   labs(x = "Approach", y = "Total CS size (variants)") +
   theme_bw(base_size = 12) +
   theme(legend.position = "none")
-ggsave(paste0(OUT_DIR, "/plots/cs_size_violin.tiff"), p1, width = 5, height = 5, dpi = 300, bg = "white", compression = "lzw")
+ggsave(paste0(OUT_DIR, "/plots/cs_size_violin.pdf"), p1, width = 5, height = 5, dpi = 300, bg = "white")
 
 # PIP scatter: uniform vs Evo2
 if (nrow(per_locus) > 0 && all(c("top_pip_uniform", "top_pip_evo2") %in% colnames(per_locus))) {
@@ -587,7 +588,7 @@ if (nrow(per_locus) > 0 && all(c("top_pip_uniform", "top_pip_evo2") %in% colname
     labs(x = "Top PIP (Uniform Prior)", y = "Top PIP (Evo2 Prior)") +
     coord_equal(xlim = c(0, 1), ylim = c(0, 1)) +
     theme_bw(base_size = 12)
-  ggsave(paste0(OUT_DIR, "/plots/pip_scatter.tiff"), p2, width = 5, height = 5, dpi = 300, bg = "white", compression = "lzw")
+  ggsave(paste0(OUT_DIR, "/plots/pip_scatter.pdf"), p2, width = 5, height = 5, dpi = 300, bg = "white")
 }
 
 # Jaccard histogram
@@ -597,7 +598,7 @@ if (nrow(jaccard_df) > 0) {
     geom_histogram(bins = 20, fill = "#4393C3", colour = "white") +
     labs(x = "Jaccard index", y = "Locus count") +
     theme_bw(base_size = 12)
-  ggsave(paste0(OUT_DIR, "/plots/jaccard_histogram.tiff"), p3, width = 5, height = 4, dpi = 300, bg = "white", compression = "lzw")
+  ggsave(paste0(OUT_DIR, "/plots/jaccard_histogram.pdf"), p3, width = 5, height = 4, dpi = 300, bg = "white")
 }
 
 # Venn diagram: overlap between original S11 CS variants and each new
@@ -688,7 +689,7 @@ if (length(orig_all_variants) > 0 && length(uniform_all_variants) > 0 && length(
     theme(legend.position = "none",
           plot.margin = margin(20, 20, 20, 20))
   
-  ggsave(paste0(OUT_DIR, "/plots/venn_overlap.tiff"), p4, width = 6, height = 6, dpi = 300, bg = "white", compression = "lzw")
+  ggsave(paste0(OUT_DIR, "/plots/venn_overlap.pdf"), p4, width = 6, height = 6, dpi = 300, bg = "white")
 } else {
   warning("Skipped Venn diagram: at least one of the three variant sets (S11, uniform, Evo2) is empty.")
 }
@@ -802,7 +803,7 @@ for (lid in loci_with_both) {
   
   combined <- p_top / p_mid / p_bot
   
-  ggsave(paste0(locuszoom_dir, "/", lid, "_locuszoom.tiff"), combined, width = 8, height = 10, dpi = 300, bg = "white", compression = "lzw")
+  ggsave(paste0(locuszoom_dir, "/", lid, "_locuszoom.pdf"), combined, width = 8, height = 10, dpi = 300, bg = "white")
   n_locuszoom_written <- n_locuszoom_written + 1
 }
 
