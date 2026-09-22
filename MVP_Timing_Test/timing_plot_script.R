@@ -50,6 +50,11 @@ save_plot <- function(plot, filename, width = plot_width, height = plot_height) 
   out_path <- file.path(output_dir, paste0(filename, ".", output_format))
   ggsave(filename = out_path, plot = plot, width = width, height = height, dpi = 300)
   message("Saved: ", out_path)
+  
+  # Also write a 300dpi TIFF alongside the primary output_format file
+  tiff_path <- file.path(output_dir, paste0(filename, ".tiff"))
+  ggsave(filename = tiff_path, plot = plot, width = width, height = height, dpi = 300, compression = "lzw")
+  message("Saved: ", tiff_path)
 }
 
 # ============================================================================
