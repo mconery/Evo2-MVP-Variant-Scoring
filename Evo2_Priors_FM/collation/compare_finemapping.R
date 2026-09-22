@@ -22,14 +22,15 @@
 #   cs_comparison.tsv           -- one row per locus × CS signal
 #   s11_highpip_capture.tsv     -- one row per original high-PIP (>0.95) signal
 #   aggregate_metrics.txt       -- printed summary statistics + Wilcoxon tests
-#   plots/cs_size_violin.jpg    -- includes paired Wilcoxon p-value (300dpi)
-#   plots/pip_scatter.jpg
-#   plots/jaccard_histogram.jpg
-#   plots/venn_overlap.jpg      -- pooled CS-variant overlap: S11 vs uniform vs Evo2
-#   plots/locuszoom/{locus_id}_locuszoom.jpg
+#   plots/cs_size_violin.tiff    -- includes paired Wilcoxon p-value (300dpi tiff)
+#   plots/pip_scatter.tiff
+#   plots/jaccard_histogram.tiff
+#   plots/venn_overlap.tiff      -- pooled CS-variant overlap: S11 vs uniform vs Evo2
+#   plots/locuszoom/{locus_id}_locuszoom.tiff
 #                               -- one per locus, 3 stacked panels: GWAS -log10(p),
 #                                  uniform-prior PIP, Evo2-prior PIP, sharing a
 #                                  genomic-position x-axis
+#   (all plots are written as 300 dpi TIFFs)
 ################################################################################
 
 suppressPackageStartupMessages({
@@ -163,7 +164,7 @@ cat("S11 variant ID examples:   ", paste(s11_variant_examples, collapse = " | ")
 cat("CARMA variant ID examples: ", paste(carma_variant_examples, collapse = " | "), "\n")
 
 n_variant_matches <- length(intersect(unique(unlist(s11_t2d$orig_cs_variants)),
-                                       unique(res_no$SNP_ID)))
+                                      unique(res_no$SNP_ID)))
 cat(sprintf("Variant IDs shared between S11 and CARMA, genome-wide: %d\n", n_variant_matches))
 if (n_variant_matches == 0) {
   warning(paste(
@@ -228,7 +229,7 @@ if (n_unmapped_no > 0 || n_unmapped_evo > 0) {
 # Post-translation sanity check: overlap should now be non-trivial if the
 # translation worked.
 n_variant_matches_post <- length(intersect(unique(unlist(s11_t2d$orig_cs_variants)),
-                                            unique(na.omit(res_no$pos_id))))
+                                           unique(na.omit(res_no$pos_id))))
 cat(sprintf("Post-translation: %d variant IDs now shared between S11 and CARMA (uniform), genome-wide\n\n",
             n_variant_matches_post))
 
@@ -299,14 +300,14 @@ overlap_s11 <- purrr::map_dfr(loci_with_both, function(lid) {
     pull(orig_cs_variants) %>%
     unlist() %>%
     unique()
-
+  
   # Use pos_id (chr:pos:ref:alt), not the raw rsID SNP_ID, since S11 identifies
   # variants positionally -- see section 2c for the rsID -> pos_id translation.
   cs_no  <- res_no  %>% filter(locus_id == lid, CS_ID > 0) %>% pull(pos_id) %>% na.omit()
   cs_evo <- res_evo %>% filter(locus_id == lid, CS_ID > 0) %>% pull(pos_id) %>% na.omit()
-
+  
   s11_best_variants <- s11_t2d$EUR.best_variant[s11_t2d$locus_id == lid]
-
+  
   tibble(
     locus_id                     = lid,
     jaccard_orig_vs_uniform      = jaccard(orig_variants, cs_no),
@@ -362,16 +363,16 @@ cat(sprintf("Written: %s/s11_highpip_capture.tsv\n", OUT_DIR))
 
 per_locus <- loci %>%
   left_join(sum_no  %>% select(locus_id, n_cs_uniform = n_cs,
-                                top_pip_uniform = top_pip,
-                                top_var_uniform = top_variant,
-                                n_singleton_uniform = n_singleton_cs,
-                                total_cs_size_uniform = total_cs_size),
+                               top_pip_uniform = top_pip,
+                               top_var_uniform = top_variant,
+                               n_singleton_uniform = n_singleton_cs,
+                               total_cs_size_uniform = total_cs_size),
             by = "locus_id") %>%
   left_join(sum_evo %>% select(locus_id, n_cs_evo2 = n_cs,
-                                top_pip_evo2 = top_pip,
-                                top_var_evo2 = top_variant,
-                                n_singleton_evo2 = n_singleton_cs,
-                                total_cs_size_evo2 = total_cs_size),
+                               top_pip_evo2 = top_pip,
+                               top_var_evo2 = top_variant,
+                               n_singleton_evo2 = n_singleton_cs,
+                               total_cs_size_evo2 = total_cs_size),
             by = "locus_id") %>%
   left_join(jaccard_df,  by = "locus_id") %>%
   left_join(overlap_s11, by = "locus_id")
@@ -575,7 +576,7 @@ p1 <- ggplot(plot_data, aes(x = approach_label, y = total_cs_size, fill = approa
   labs(x = "Approach", y = "Total CS size (variants)") +
   theme_bw(base_size = 12) +
   theme(legend.position = "none")
-ggsave(paste0(OUT_DIR, "/plots/cs_size_violin.jpg"), p1, width = 5, height = 5, dpi = 300, bg = "white")
+ggsave(paste0(OUT_DIR, "/plots/cs_size_violin.tiff"), p1, width = 5, height = 5, dpi = 300, bg = "white", compression = "lzw")
 
 # PIP scatter: uniform vs Evo2
 if (nrow(per_locus) > 0 && all(c("top_pip_uniform", "top_pip_evo2") %in% colnames(per_locus))) {
@@ -586,7 +587,7 @@ if (nrow(per_locus) > 0 && all(c("top_pip_uniform", "top_pip_evo2") %in% colname
     labs(x = "Top PIP (Uniform Prior)", y = "Top PIP (Evo2 Prior)") +
     coord_equal(xlim = c(0, 1), ylim = c(0, 1)) +
     theme_bw(base_size = 12)
-  ggsave(paste0(OUT_DIR, "/plots/pip_scatter.jpg"), p2, width = 5, height = 5, dpi = 300, bg = "white")
+  ggsave(paste0(OUT_DIR, "/plots/pip_scatter.tiff"), p2, width = 5, height = 5, dpi = 300, bg = "white", compression = "lzw")
 }
 
 # Jaccard histogram
@@ -596,7 +597,7 @@ if (nrow(jaccard_df) > 0) {
     geom_histogram(bins = 20, fill = "#4393C3", colour = "white") +
     labs(x = "Jaccard index", y = "Locus count") +
     theme_bw(base_size = 12)
-  ggsave(paste0(OUT_DIR, "/plots/jaccard_histogram.jpg"), p3, width = 5, height = 4, dpi = 300, bg = "white")
+  ggsave(paste0(OUT_DIR, "/plots/jaccard_histogram.tiff"), p3, width = 5, height = 4, dpi = 300, bg = "white", compression = "lzw")
 }
 
 # Venn diagram: overlap between original S11 CS variants and each new
@@ -609,7 +610,7 @@ uniform_all_variants <- res_no  %>% filter(CS_ID > 0) %>% pull(pos_id) %>% na.om
 evo2_all_variants    <- res_evo %>% filter(CS_ID > 0) %>% pull(pos_id) %>% na.omit() %>% unique()
 
 if (length(orig_all_variants) > 0 && length(uniform_all_variants) > 0 && length(evo2_all_variants) > 0) {
-
+  
   # ---- Precompute the 7 region counts + percentages ourselves --------------
   # ggvenn's built-in percentage labels round to a fixed number of DECIMAL
   # PLACES (its `digits` argument), which does not translate into a fixed
@@ -621,7 +622,7 @@ if (length(orig_all_variants) > 0 && length(uniform_all_variants) > 0 && length(
   # signif(), then draw the diagram manually so we have full control over
   # both.
   A <- orig_all_variants; B <- uniform_all_variants; C <- evo2_all_variants
-
+  
   region_counts <- c(
     A_only  = length(setdiff(A, union(B, C))),
     B_only  = length(setdiff(B, union(A, C))),
@@ -632,14 +633,14 @@ if (length(orig_all_variants) > 0 && length(uniform_all_variants) > 0 && length(
     ABC     = length(Reduce(intersect, list(A, B, C)))
   )
   venn_total <- sum(region_counts)  # = |A ∪ B ∪ C|, since the 7 regions partition it
-
+  
   sig2_pct <- function(n) paste0(format(signif(100 * n / venn_total, 2), trim = TRUE), "%")
-
+  
   venn_labels <- data.frame(
     region = names(region_counts),
     label  = paste0(unname(region_counts), "\n(", unname(sapply(region_counts, sig2_pct)), ")")
   )
-
+  
   # ---- Manual 3-circle layout (independent of any plotting package's
   # internal geometry, so we know exactly what numbers land where) ----------
   circle_pts <- function(cx, cy, r, n = 200) {
@@ -652,11 +653,11 @@ if (length(orig_all_variants) > 0 && length(uniform_all_variants) > 0 && length(
     "Evo2 Prior"     = c(x =  0.0, y = -0.8)
   )
   circle_r <- 1.5
-
+  
   circles_df <- purrr::imap_dfr(centers, function(ctr, nm) {
     cbind(circle_pts(ctr["x"], ctr["y"], circle_r), set = nm)
   })
-
+  
   set_name_pos <- data.frame(
     set = names(centers),
     x   = c(centers[[1]]["x"], centers[[2]]["x"], centers[[3]]["x"]),
@@ -664,14 +665,14 @@ if (length(orig_all_variants) > 0 && length(uniform_all_variants) > 0 && length(
             centers[[2]]["y"] + circle_r + 0.25,
             centers[[3]]["y"] - circle_r - 0.25)
   )
-
+  
   label_pos <- data.frame(
     region = c("A_only", "B_only", "C_only", "AB_only", "AC_only", "BC_only", "ABC"),
     x = c(-1.5, 1.5, 0, 0, -0.9, 0.9, 0),
     y = c(1.0, 1.0, -1.9, 1.0, -0.55, -0.55, 0.0)
   ) %>%
     left_join(venn_labels, by = "region")
-
+  
   p4 <- ggplot() +
     geom_polygon(data = circles_df, aes(x = x, y = y, fill = set, group = set),
                  alpha = 0.5, colour = "black", linewidth = 0.6) +
@@ -680,14 +681,14 @@ if (length(orig_all_variants) > 0 && length(uniform_all_variants) > 0 && length(
     geom_text(data = label_pos, aes(x = x, y = y, label = label),
               size = 4, lineheight = 0.9) +
     scale_fill_manual(values = c("Original (S11)" = "#66C2A5",
-                                  "Uniform Prior"  = "#4393C3",
-                                  "Evo2 Prior"     = "#D6604D")) +
+                                 "Uniform Prior"  = "#4393C3",
+                                 "Evo2 Prior"     = "#D6604D")) +
     coord_fixed(clip = "off") +
     theme_void() +
     theme(legend.position = "none",
           plot.margin = margin(20, 20, 20, 20))
-
-  ggsave(paste0(OUT_DIR, "/plots/venn_overlap.jpg"), p4, width = 6, height = 6, dpi = 300, bg = "white")
+  
+  ggsave(paste0(OUT_DIR, "/plots/venn_overlap.tiff"), p4, width = 6, height = 6, dpi = 300, bg = "white", compression = "lzw")
 } else {
   warning("Skipped Venn diagram: at least one of the three variant sets (S11, uniform, Evo2) is empty.")
 }
@@ -722,7 +723,7 @@ locuszoom_dir <- paste0(OUT_DIR, "/plots/locuszoom")
 dir.create(locuszoom_dir, showWarnings = FALSE, recursive = TRUE)
 
 build_panel <- function(data, yvar, x_range, fill_values, colour_values,
-                         is_bottom, x_title = NULL) {
+                        is_bottom, x_title = NULL) {
   ggplot(data, aes(x = POS_num, y = .data[[yvar]])) +
     geom_point(aes(fill = fill_grp, colour = ring_grp),
                shape = 21, size = 2.8, stroke = 1.1) +
@@ -745,13 +746,13 @@ cat(sprintf("Generating %d per-locus 3-panel plots ...\n", length(loci_with_both
 
 n_locuszoom_written <- 0
 for (lid in loci_with_both) {
-
+  
   vm <- variant_map %>% filter(locus_id == lid)
   if (nrow(vm) == 0) {
     warning(sprintf("Skipping locuszoom plot for %s: no variant list data found.", lid))
     next
   }
-
+  
   locus_df <- vm %>%
     mutate(POS_num  = suppressWarnings(as.numeric(POS)),
            PVAL_num = suppressWarnings(as.numeric(PVAL))) %>%
@@ -764,22 +765,22 @@ for (lid in loci_with_both) {
       # very large cohort), not a true p = 0 -- capped at -log10(p) = 320
       # rather than plotted as Inf.
       neg_log10_pval = ifelse(is.na(PVAL_num), NA_real_,
-                               ifelse(PVAL_num <= 0, 320, -log10(PVAL_num))),
+                              ifelse(PVAL_num <= 0, 320, -log10(PVAL_num))),
       fill_grp = ifelse(!is.na(uniform_cs) & uniform_cs > 0, as.character(uniform_cs), "None"),
       ring_grp = ifelse(!is.na(evo2_cs)    & evo2_cs    > 0, as.character(evo2_cs),    "None")
     )
-
+  
   # Draw highlighted (in-CS) points last so they render on top of the grey background
   locus_df <- locus_df %>%
     mutate(is_highlighted = fill_grp != "None" | ring_grp != "None") %>%
     arrange(is_highlighted)
-
+  
   fill_levels <- sort(setdiff(unique(locus_df$fill_grp), "None"))
   ring_levels <- sort(setdiff(unique(locus_df$ring_grp), "None"))
-
+  
   pal_fill <- if (length(fill_levels) > 0) setNames(red_palette(length(fill_levels)),  fill_levels) else character(0)
   pal_ring <- if (length(ring_levels) > 0) setNames(blue_palette(length(ring_levels)), ring_levels) else character(0)
-
+  
   fill_values <- c(pal_fill, "None" = "grey80")
   # NOTE: "None" must NOT map to NA here. geom_point() treats colour as a
   # required aesthetic even with shape 21 (fill + border), so an NA colour
@@ -788,20 +789,20 @@ for (lid in loci_with_both) {
   # grey as the fill keeps the row visible while showing no distinguishable
   # ring (fill and border are indistinguishable in that colour).
   colour_values <- c(pal_ring, "None" = "grey80")
-
+  
   x_range <- range(locus_df$POS_num, na.rm = TRUE)
   chr_num <- unique(locus_df$CHR)[1]
-
+  
   p_top <- build_panel(locus_df, "neg_log10_pval", x_range, fill_values, colour_values,
-                        is_bottom = FALSE)
+                       is_bottom = FALSE)
   p_mid <- build_panel(locus_df, "uniform_pip", x_range, fill_values, colour_values,
-                        is_bottom = FALSE)
+                       is_bottom = FALSE)
   p_bot <- build_panel(locus_df, "evo2_pip", x_range, fill_values, colour_values,
-                        is_bottom = TRUE, x_title = paste0("Chromosome ", chr_num))
-
+                       is_bottom = TRUE, x_title = paste0("Chromosome ", chr_num))
+  
   combined <- p_top / p_mid / p_bot
-
-  ggsave(paste0(locuszoom_dir, "/", lid, "_locuszoom.jpg"), combined, width = 8, height = 10, dpi = 300, bg = "white")
+  
+  ggsave(paste0(locuszoom_dir, "/", lid, "_locuszoom.tiff"), combined, width = 8, height = 10, dpi = 300, bg = "white", compression = "lzw")
   n_locuszoom_written <- n_locuszoom_written + 1
 }
 
