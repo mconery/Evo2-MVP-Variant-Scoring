@@ -440,15 +440,21 @@ run_context_analysis <- function(evo2_file, context_bp, conservation, output_dir
   
   violin_path <- file.path(output_dir, paste0("conservation_individual_regressions", file_suffix, ".png"))
   ggsave(violin_path, plot_violins, width = 12, height = 10, dpi = 300)
+  ggsave(sub("\\.png$", ".tiff", violin_path), plot_violins, width = 12, height = 10, dpi = 300, compression = "lzw")
   message("Saved: ", violin_path)
+  message("Saved: ", sub("\\.png$", ".tiff", violin_path))
   
   forest_path <- file.path(output_dir, paste0("conservation_joint_regression_forest", file_suffix, ".png"))
   ggsave(forest_path, plot_forest, width = 12, height = 5, dpi = 300)
+  ggsave(sub("\\.png$", ".tiff", forest_path), plot_forest, width = 12, height = 5, dpi = 300, compression = "lzw")
   message("Saved: ", forest_path)
+  message("Saved: ", sub("\\.png$", ".tiff", forest_path))
   
   vif_path <- file.path(output_dir, paste0("conservation_vif_barplot", file_suffix, ".png"))
   ggsave(vif_path, plot_vif, width = 8, height = 5, dpi = 300)
+  ggsave(sub("\\.png$", ".tiff", vif_path), plot_vif, width = 8, height = 5, dpi = 300, compression = "lzw")
   message("Saved: ", vif_path)
+  message("Saved: ", sub("\\.png$", ".tiff", vif_path))
   
   message("\n=== Done ===")
   
@@ -515,7 +521,9 @@ run_context_analysis <- function(evo2_file, context_bp, conservation, output_dir
   
   corr_path <- file.path(output_dir, paste0("conservation_pairwise_correlations", file_suffix, ".png"))
   ggsave(corr_path, plot_corr, width = 14, height = 10, dpi = 300)
+  ggsave(sub("\\.png$", ".tiff", corr_path), plot_corr, width = 14, height = 10, dpi = 300, compression = "lzw")
   message("Saved: ", corr_path)
+  message("Saved: ", sub("\\.png$", ".tiff", corr_path))
   
   # ============================================================================
   # STEP 9: MAF vs EVO2 SCORE CORRELATION
@@ -617,7 +625,9 @@ run_context_analysis <- function(evo2_file, context_bp, conservation, output_dir
   
   maf_path <- file.path(output_dir, paste0("conservation_maf_evo2_correlation", file_suffix, ".png"))
   ggsave(maf_path, plot_maf, width = 16, height = 6, dpi = 300)
+  ggsave(sub("\\.png$", ".tiff", maf_path), plot_maf, width = 16, height = 6, dpi = 300, compression = "lzw")
   message("Saved: ", maf_path)
+  message("Saved: ", sub("\\.png$", ".tiff", maf_path))
   
   # ============================================================================
   # STEP 10: MAF vs LOG10(|EVO2 DELTA SCORE|) CORRELATION
@@ -719,7 +729,9 @@ run_context_analysis <- function(evo2_file, context_bp, conservation, output_dir
   
   maf_log_path <- file.path(output_dir, paste0("conservation_maf_log10evo2_correlation", file_suffix, ".png"))
   ggsave(maf_log_path, plot_maf_log, width = 16, height = 6, dpi = 300)
+  ggsave(sub("\\.png$", ".tiff", maf_log_path), plot_maf_log, width = 16, height = 6, dpi = 300, compression = "lzw")
   message("Saved: ", maf_log_path)
+  message("Saved: ", sub("\\.png$", ".tiff", maf_log_path))
   
   # ============================================================================
   # STEP 11: EVO2 LOGISTIC REGRESSION — WITH AND WITHOUT MAF COVARIATE
@@ -830,7 +842,9 @@ run_context_analysis <- function(evo2_file, context_bp, conservation, output_dir
   
   maf_forest_path <- file.path(output_dir, paste0("conservation_maf_regression_forest", file_suffix, ".png"))
   ggsave(maf_forest_path, plot_maf_forest, width = 12, height = 4, dpi = 300)
+  ggsave(sub("\\.png$", ".tiff", maf_forest_path), plot_maf_forest, width = 12, height = 4, dpi = 300, compression = "lzw")
   message("Saved: ", maf_forest_path)
+  message("Saved: ", sub("\\.png$", ".tiff", maf_forest_path))
   
   message("\n=== Done: ", context_label, " context window ===")
   

@@ -468,7 +468,7 @@ create_faceted_boxplot <- function(data, vep_filter = NULL, title = NULL,
     ) +
     facet_grid(context_size_factor ~ model_size_factor, scales = "free") +
     labs(
-      title = title,
+      title = NULL,
       x = NULL,
       y = "Evo2 Delta Score (pseudo-log scale)"
     ) +
@@ -683,6 +683,23 @@ save_plot <- function(plot, filename, width = 12, height = 8, format = "png", ou
   )
   
   message("Plot saved to: ", output_file)
+  
+  # Also write a 300dpi TIFF alongside the primary format (unless the
+  # primary format IS tiff, in which case output_file above already is one)
+  if (tolower(format) != "tiff") {
+    tiff_file <- file.path(output_directory, paste0(filename, ".tiff"))
+    
+    ggsave(
+      filename = tiff_file,
+      plot = plot,
+      width = width,
+      height = height,
+      dpi = 300,
+      compression = "lzw"
+    )
+    
+    message("Plot saved to: ", tiff_file)
+  }
 }
 
 #' Build a wide-format collated results table from all model/context combinations
