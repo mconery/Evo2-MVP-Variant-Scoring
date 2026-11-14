@@ -440,10 +440,14 @@ write_tsv(cs_all, paste0(OUT_DIR, "/cs_comparison.tsv"))
 cat(sprintf("Written: %s/cs_comparison.tsv\n", OUT_DIR))
 
 #Extract credible set lists
-uniform_rsid <- cs_all %>% filter(approach == "uniform") %>% dplyr::select(variants) %>% str_split(";") %>% unlist %>% write.csv(file = paste0(OUT_DIR, "/uniform_variants_rsid.csv"))
-evo2_rsid <- cs_all %>% filter(approach != "uniform") %>% dplyr::select(variants) %>% str_split(";") %>% unlist %>% write.csv(file = paste0(OUT_DIR, "/evo2_variants_rsid.csv"))
-uniform_variant_id <- cs_all %>% filter(approach == "uniform") %>% dplyr::select(variants_pos_id) %>% str_split(";") %>% unlist %>% write.csv(file = paste0(OUT_DIR, "/uniform_variants_position.csv"))
-evo2_variant_id <- cs_all %>% filter(approach != "uniform") %>% dplyr::select(variants_pos_id) %>% str_split(";") %>% unlist %>% write.csv(file = paste0(OUT_DIR, "/evo2_variants_position.csv"))
+uniform_rsid <- cs_all %>% filter(approach == "uniform") %>% dplyr::select(variants) %>% str_split(";") %>% 
+  unlist %>% write.csv(file = paste0(OUT_DIR, "/uniform_variants_rsid.csv"), row.names = FALSE, col.names = FALSE, quote = FALSE)
+evo2_rsid <- cs_all %>% filter(approach != "uniform") %>% dplyr::select(variants) %>% str_split(";") %>% 
+  unlist %>% write.csv(file = paste0(OUT_DIR, "/evo2_variants_rsid.csv"))
+uniform_variant_id <- cs_all %>% filter(approach == "uniform") %>% dplyr::select(variants_pos_id) %>% str_split(";") %>% 
+  unlist %>% write.csv(file = paste0(OUT_DIR, "/uniform_variants_position.csv"))
+evo2_variant_id <- cs_all %>% filter(approach != "uniform") %>% dplyr::select(variants_pos_id) %>% str_split(";") %>% 
+  unlist %>% write.csv(file = paste0(OUT_DIR, "/evo2_variants_position.csv"))
 
 # ---------------------------------------------------------------------------
 # 8) Aggregate metrics
